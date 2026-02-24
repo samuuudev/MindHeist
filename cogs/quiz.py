@@ -188,7 +188,7 @@ Reglas:
 class QuizView(discord.ui.View):
     """Botones interactivos para responder al quiz."""
 
-    EMOJI_LETTERS = ["🅰️", "🅱️", "🅲", "🅳"]
+    EMOJI_LETTERS = ["🇦", "🇧", "🇨", "🇩"]
     COLOR_DEFAULT = discord.ButtonStyle.secondary
     COLOR_CORRECT = discord.ButtonStyle.success
     COLOR_WRONG = discord.ButtonStyle.danger

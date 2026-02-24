@@ -21,7 +21,7 @@ log = logging.getLogger("bot.gold")
 class GoldQuestionView(discord.ui.View):
     """Botones para la Pregunta de Oro. Primer acierto gana."""
 
-    EMOJI_LETTERS = ["🅰️", "🅱️", "🅲", "🅳"]
+    EMOJI_LETTERS = ["🇦", "🇧", "🇨", "🇩"]
 
     def __init__(self, question_data: dict, timeout_seconds: int = 60):
         super().__init__(timeout=timeout_seconds)

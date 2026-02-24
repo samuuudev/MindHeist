@@ -20,7 +20,7 @@ log = logging.getLogger("bot.daily")
 class DailyView(discord.ui.View):
     """Botones interactivos para la pregunta diaria."""
 
-    EMOJI_LETTERS = ["🅰️", "🅱️", "🅲", "🅳"]
+    EMOJI_LETTERS = ["🇦", "🇧", "🇨", "🇩"]
 
     def __init__(self, question_data: dict, user_id: int):
         super().__init__(timeout=60)  # 60 segundos para daily

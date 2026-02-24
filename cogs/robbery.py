@@ -20,7 +20,7 @@ log = logging.getLogger("bot.robbery")
 class RobberyView(discord.ui.View):
     """Botones para la pregunta del robo. Solo el atacante responde."""
 
-    EMOJI_LETTERS = ["🅰️", "🅱️", "🅲", "🅳"]
+    EMOJI_LETTERS = ["🇦", "🇧", "🇨", "🇩"]
 
     def __init__(self, question_data: dict, attacker_id: int):
         super().__init__(timeout=20)  # 20 segundos para robo
