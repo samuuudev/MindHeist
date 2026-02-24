@@ -39,7 +39,7 @@ CREATE TYPE question_source AS ENUM ('openai', 'opentdb', 'manual');
 CREATE TYPE question_difficulty AS ENUM ('easy', 'medium', 'hard');
 CREATE TYPE question_category AS ENUM (
     'general', 'science', 'history', 'geography',
-    'entertainment', 'sports', 'logic', 'riddle', 'server'
+    'entertainment', 'sports', 'logic', 'riddle', 'server', 'videogames', 'literature', 'art'
 );
 
 CREATE TABLE questions (

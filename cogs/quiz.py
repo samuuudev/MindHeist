@@ -479,6 +479,7 @@ class QuizCog(commands.Cog):
                 data.get("difficulty", "medium"),
                 data.get("category", "general"),
                 data.get("source", "openai"),
+                print(repr(data["category"]))
             )
 
     async def _save_answer(
@@ -487,6 +488,7 @@ class QuizCog(commands.Cog):
         context, response_time,
     ):
         async with self.bot.db.acquire() as conn:
+
             await conn.execute(
                 """
                 INSERT INTO answer_history
