@@ -1,24 +1,33 @@
 ﻿"""
-Discord Competitive Bot — Main Entry Point
-Desarrollado con discord.py + PostgreSQL
+Bot Competitivo de Trivia — Archivo principal
+Gestiona la conexión a Discord, base de datos y carga de módulos.
 """
 
 import os
+import sys
+import time
 import asyncio
 import logging
-from datetime import datetime
+from pathlib import Path
 
 import discord
 from discord.ext import commands, tasks
-import asyncpg
 from dotenv import load_dotenv
+import asyncpg
 
-# ── Configuración ──────────────────────────────────────────────
-load_dotenv()
+# ── Configuración de entorno ───────────────────────────────────
+load_dotenv(override=False)
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")  # postgresql://user:pass@host:port/dbname
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not TOKEN:
+    print("[ERROR] DISCORD_TOKEN no está configurado.")
+    sys.exit(1)
+
+if not DATABASE_URL:
+    print("[ERROR] DATABASE_URL no está configurado.")
+    sys.exit(1)
 
 # ── Logging ────────────────────────────────────────────────────
 logging.basicConfig(
@@ -28,182 +37,113 @@ logging.basicConfig(
 )
 log = logging.getLogger("bot")
 
-# ── Intents ────────────────────────────────────────────────────
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
+# Silenciar logs excesivos de discord.py
+logging.getLogger("discord.http").setLevel(logging.WARNING)
+logging.getLogger("discord.gateway").setLevel(logging.WARNING)
+
+# ── Lista de módulos (cogs) ────────────────────────────────────
+COGS = [
+    "cogs.logger",
+    "cogs.quiz",
+    "cogs.daily",
+    "cogs.ranking",
+    "cogs.gold",
+    "cogs.robbery",
+    "cogs.admin",
+]
 
 
-# ── Clase principal del Bot ────────────────────────────────────
-class CompetitiveBot(commands.Bot):
-    """Bot principal con pool de conexión a PostgreSQL."""
+# ── Bot principal ──────────────────────────────────────────────
+class TriviaBot(commands.Bot):
+    """Bot principal con conexión a PostgreSQL y carga de cogs."""
 
     def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True
+
         super().__init__(
             command_prefix="!",
             intents=intents,
-            description="Bot competitivo de trivia y economía",
+            help_command=None,
+            activity=discord.Activity(
+                type=discord.ActivityType.watching,
+                name="Iniciando...",
+            ),
         )
         self.db: asyncpg.Pool | None = None
+        self._uptime: float = time.time()
 
-    # ── Conexión a la base de datos ────────────────────────────
     async def setup_hook(self):
-        """Se ejecuta antes de que el bot se conecte a Discord."""
-        log.info("Conectando a PostgreSQL...")
-        self.db = await asyncpg.create_pool(
-            DATABASE_URL,
-            min_size=2,
-            max_size=10,
-            command_timeout=30,
-        )
-        log.info("✅ Pool de PostgreSQL creado correctamente.")
+        """Se ejecuta antes de conectar a Discord. Inicializa DB y cogs."""
 
-        # Inicializar schema si es necesario
+        # Conexión a PostgreSQL
+        log.info("Conectando a PostgreSQL...")
+        try:
+            self.db = await asyncpg.create_pool(
+                DATABASE_URL,
+                min_size=2,
+                max_size=10,
+                command_timeout=30,
+            )
+            log.info("Pool de PostgreSQL creado correctamente.")
+        except Exception as e:
+            log.critical(f"No se pudo conectar a PostgreSQL: {e}")
+            sys.exit(1)
+
+        # Inicializar schema
         await self._init_database()
 
-        # Cargar cogs (módulos del bot)
-        await self._load_cogs()
-
-        # Iniciar tareas en segundo plano
-        self.check_temp_roles.start()
-        self.reset_daily_counters.start()
-
-        # Sincronizar comandos slash
-        log.info("Sincronizando comandos slash...")
-        await self.tree.sync()
-        log.info("✅ Comandos sincronizados.")
+        # Cargar cogs
+        for cog in COGS:
+            try:
+                await self.load_extension(cog)
+                log.info(f"  Cog cargado: {cog}")
+            except Exception as e:
+                log.error(f"  Error cargando {cog}: {e}")
 
     async def _init_database(self):
-        """Ejecuta el schema SQL si las tablas no existen."""
-        async with self.db.acquire() as conn:
-            # Verificar si la tabla 'users' existe
-            exists = await conn.fetchval("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_name = 'users'
-                );
-            """)
-            if not exists:
-                log.info("Inicializando base de datos con schema.sql...")
-                schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
-                with open(schema_path, "r", encoding="utf-8") as f:
-                    schema = f.read()
-                await conn.execute(schema)
-                log.info("✅ Schema aplicado correctamente.")
-            else:
-                log.info("Base de datos ya inicializada.")
+        """Ejecuta schema.sql para crear tablas si no existen."""
+        schema_path = Path(__file__).parent / "schema.sql"
 
-    async def _load_cogs(self):
-        """Carga todos los cogs desde la carpeta cogs/."""
-        cogs_dir = os.path.join(os.path.dirname(__file__), "cogs")
-        if not os.path.exists(cogs_dir):
-            os.makedirs(cogs_dir)
-            log.warning("Carpeta cogs/ creada. Añade tus módulos ahí.")
+        if not schema_path.exists():
+            log.warning("schema.sql no encontrado. Saltando inicialización de DB.")
             return
 
-        for filename in sorted(os.listdir(cogs_dir)):
-            if filename.endswith(".py") and not filename.startswith("_"):
-                cog_name = f"cogs.{filename[:-3]}"
-                try:
-                    await self.load_extension(cog_name)
-                    log.info(f"  ✅ Cog cargado: {cog_name}")
-                except Exception as e:
-                    log.error(f"  ❌ Error cargando {cog_name}: {e}")
+        log.info("Inicializando base de datos con schema.sql...")
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                schema = f.read()
+            async with self.db.acquire() as conn:
+                await conn.execute(schema)
+            log.info("Base de datos inicializada correctamente.")
+        except Exception as e:
+            log.error(f"Error inicializando base de datos: {e}")
 
-    # ── Eventos ──────────────────────���─────────────────────────
     async def on_ready(self):
-        log.info(f"Bot conectado como {self.user} (ID: {self.user.id})")
+        """Se ejecuta cuando el bot se conecta a Discord."""
+        log.info(f"Conectado como {self.user} (ID: {self.user.id})")
         log.info(f"Servidores: {len(self.guilds)}")
 
-        print(f"✅ {self.user.name} está online!")
+        # Señal para Pterodactyl (marca el servidor como Online)
+        print(f"{self.user.name} está online!")
+
+        # Sincronizar comandos slash
+        try:
+            synced = await self.tree.sync()
+            log.info(f"Comandos sincronizados: {len(synced)}")
+        except Exception as e:
+            log.error(f"Error sincronizando comandos: {e}")
 
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.competing,
-                name="🧠 /quiz · /daily · /rank",
+                name="/quiz · /daily · /rank",
             )
         )
 
-    async def on_guild_join(self, guild: discord.Guild):
-        """Registrar configuración por defecto al unirse a un servidor."""
-        log.info(f"Unido al servidor: {guild.name} ({guild.id})")
-        async with self.db.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO guild_config (guild_id)
-                VALUES ($1)
-                ON CONFLICT (guild_id) DO NOTHING;
-            """, guild.id)
-
-    # ── Tareas en segundo plano ────────────────────────────────
-    @tasks.loop(minutes=1)
-    async def check_temp_roles(self):
-        """Revisa y elimina roles temporales expirados."""
-        if not self.db:
-            return
-
-        async with self.db.acquire() as conn:
-            expired = await conn.fetch("""
-                SELECT temp_role_id, user_id, guild_id, role_id
-                FROM temp_roles
-                WHERE removed = FALSE AND expires_at < NOW();
-            """)
-
-            for row in expired:
-                try:
-                    guild = self.get_guild(row["guild_id"])
-                    if not guild:
-                        continue
-                    member = guild.get_member(row["user_id"])
-                    if not member:
-                        continue
-                    role = guild.get_role(row["role_id"])
-                    if role and role in member.roles:
-                        await member.remove_roles(role, reason="Rol temporal expirado")
-                        log.info(
-                            f"Rol temporal {role.name} removido de {member.display_name}"
-                        )
-                except discord.Forbidden:
-                    log.warning(
-                        f"Sin permisos para remover rol {row['role_id']} "
-                        f"en guild {row['guild_id']}"
-                    )
-                except Exception as e:
-                    log.error(f"Error removiendo rol temporal: {e}")
-
-                # Marcar como removido en la DB
-                await conn.execute("""
-                    UPDATE temp_roles SET removed = TRUE
-                    WHERE temp_role_id = $1;
-                """, row["temp_role_id"])
-
-    @check_temp_roles.before_loop
-    async def before_check_temp_roles(self):
-        await self.wait_until_ready()
-
-    @tasks.loop(hours=24)
-    async def reset_daily_counters(self):
-        """Resetea contadores diarios (robos, etc.)."""
-        if not self.db:
-            return
-        async with self.db.acquire() as conn:
-            await conn.execute("SELECT reset_daily_counters();")
-            log.info("✅ Contadores diarios reseteados.")
-
-    @reset_daily_counters.before_loop
-    async def before_reset_daily(self):
-        await self.wait_until_ready()
-        # Esperar hasta medianoche para empezar el loop
-        now = datetime.utcnow()
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if now > midnight:
-            from datetime import timedelta
-            midnight += timedelta(days=1)
-        delta = (midnight - now).total_seconds()
-        log.info(f"Reset diario programado en {delta:.0f} segundos.")
-        await asyncio.sleep(delta)
-
-    # ── Cierre limpio ──────────────────────────────────────────
     async def close(self):
+        """Limpieza al cerrar el bot."""
         log.info("Cerrando bot...")
         if self.db:
             await self.db.close()
@@ -211,55 +151,12 @@ class CompetitiveBot(commands.Bot):
         await super().close()
 
 
-# ── Helper para acceder a la DB desde los cogs ────────────────
-async def get_or_create_user(
-    db: asyncpg.Pool, user_id: int, guild_id: int, username: str
-) -> asyncpg.Record:
-    """Obtiene un usuario o lo crea si no existe."""
-    async with db.acquire() as conn:
-        user = await conn.fetchrow(
-            "SELECT * FROM users WHERE user_id = $1 AND guild_id = $2",
-            user_id,
-            guild_id,
-        )
-        if not user:
-            user = await conn.fetchrow("""
-                INSERT INTO users (user_id, guild_id, username)
-                VALUES ($1, $2, $3)
-                RETURNING *;
-            """, user_id, guild_id, username)
-        return user
-
-
-async def log_transaction(
-    db: asyncpg.Pool,
-    user_id: int,
-    guild_id: int,
-    tx_type: str,
-    points_delta: int = 0,
-    money_delta: int = 0,
-    description: str = "",
-):
-    """Registra una transacción económica."""
-    async with db.acquire() as conn:
-        await conn.execute("""
-            INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description)
-            VALUES ($1, $2, $3, $4, $5, $6);
-        """, user_id, guild_id, tx_type, points_delta, money_delta, description)
-
-
-# ── Entry Point ────────────────────────────────────────────────
+# ── Punto de entrada ───────────────────────────────────────────
 def main():
-    if not TOKEN:
-        log.error("❌ DISCORD_TOKEN no configurado en .env")
-        return
-    if not DATABASE_URL:
-        log.error("❌ DATABASE_URL no configurado en .env")
-        return
-
-    bot = CompetitiveBot()
+    bot = TriviaBot()
     bot.run(TOKEN, log_handler=None)
 
 
 if __name__ == "__main__":
+    print("Iniciando bot...")
     main()
