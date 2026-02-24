@@ -431,6 +431,7 @@ class QuizCog(commands.Cog):
         gold_cog = self.bot.get_cog("GoldCog")
         if gold_cog:
             await gold_cog.try_trigger_from_quiz(interaction.guild)
+        print(">>> Slash /quiz definido")
 
     # ── Base de datos ──────────────────────────────────────────
 
@@ -547,6 +548,10 @@ class QuizCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
-    print(">>> Cargando QuizCog...")
-    await bot.add_cog(QuizCog(bot))
-    print(">>> QuizCog cargado.")
+    print(">>> Añadiendo QuizCog")
+    cog = QuizCog(bot)
+    await bot.add_cog(cog)
+    print(">>> QuizCog añadido")
+    print(">>> Comandos del cog:")
+    for cmd in bot.tree.get_commands():
+        print("-", cmd.name)

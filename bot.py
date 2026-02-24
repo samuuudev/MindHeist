@@ -102,6 +102,10 @@ class TriviaBot(commands.Bot):
             except Exception as e:
                 log.error(f"  Error cargando {cog}: {e}")
 
+        print("Comandos registrados en tree:")
+        for cmd in self.tree.get_commands():
+            print("-", cmd.name)
+
     async def _init_database(self):
         """Ejecuta schema.sql para crear tablas si no existen."""
         schema_path = Path(__file__).parent / "schema.sql"
