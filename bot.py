@@ -141,6 +141,10 @@ class TriviaBot(commands.Bot):
                 name="/quiz · /daily · /rank",
             )
         )
+    async def on_guild_join(self, guild: discord.Guild):
+        """Se ejecuta cuando el bot se une a un nuevo servidor."""
+        log.info(f"Nuevo servidor unido: {guild.name} (ID: {guild.id})")
+        print(f"[NUEVO SERVIDOR] {guild.name}")
 
     async def close(self):
         """Limpieza al cerrar el bot."""
