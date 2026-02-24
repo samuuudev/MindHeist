@@ -467,17 +467,20 @@ class QuizCog(commands.Cog):
         async with self.bot.db.acquire() as conn:
             category = data.get("category", "general").strip()
 
-            # Agregar la categoría al ENUM si no existe
-            await conn.execute(
-                "DO $$ BEGIN "
-                "IF NOT EXISTS (SELECT 1 FROM pg_type t "
-                "JOIN pg_enum e ON t.oid = e.enumtypid "
-                "WHERE t.typname = 'question_category' AND e.enumlabel = $1) THEN "
-                "ALTER TYPE question_category ADD VALUE $1; "
-                "END IF; "
-                "END $$;",
-                category
-            )
+            # Escapar correctamente y añadir categoría si no existe
+            await conn.execute(f"""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_type t
+                    JOIN pg_enum e ON t.oid = e.enumtypid
+                    WHERE t.typname = 'question_category'
+                      AND e.enumlabel = '{category.replace("'", "''")}'
+                ) THEN
+                    ALTER TYPE question_category ADD VALUE '{category.replace("'", "''")}';
+                END IF;
+            END $$;
+            """)
 
             return await conn.fetchval(
                 """
