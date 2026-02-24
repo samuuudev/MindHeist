@@ -547,4 +547,6 @@ class QuizCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    print(">>> Cargando QuizCog...")
     await bot.add_cog(QuizCog(bot))
+    print(">>> QuizCog cargado.")
