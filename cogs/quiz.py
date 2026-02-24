@@ -479,7 +479,7 @@ class QuizCog(commands.Cog):
                 json.dumps(data["options"]),
                 data["correct_index"],
                 data.get("difficulty", "medium"),
-                data.get("category", "general"),
+                data.get("category", "general").strip(),
                 data.get("source", "openai")
             )
 
