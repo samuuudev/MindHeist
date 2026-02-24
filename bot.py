@@ -77,6 +77,7 @@ class TriviaBot(commands.Bot):
     async def setup_hook(self):
         """Se ejecuta antes de conectar a Discord. Inicializa DB y cogs."""
 
+        print("DATABASE_URL usada:", DATABASE_URL)
         # Conexión a PostgreSQL
         log.info("Conectando a PostgreSQL...")
         try:
