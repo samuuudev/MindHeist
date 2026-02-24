@@ -425,19 +425,22 @@ class DailyCog(commands.Cog):
 
     async def _ensure_user(self, user_id: int, guild_id: int, username: str):
         async with self.bot.db.acquire() as conn:
+            # Hacemos un upsert para evitar race conditions que provoquen UniqueViolation
+            await conn.execute(
+                """
+                INSERT INTO users (user_id, guild_id, username)
+                VALUES ($1, $2, $3) ON CONFLICT (user_id) DO
+                UPDATE
+                    SET username = EXCLUDED.username, updated_at = NOW();
+                """,
+                user_id, guild_id, username,
+            )
+
+            # Recuperamos la fila ya existente/actualizada para devolverla
             user = await conn.fetchrow(
                 "SELECT * FROM users WHERE user_id = $1 AND guild_id = $2",
                 user_id, guild_id,
             )
-            if not user:
-                user = await conn.fetchrow(
-                    """
-                    INSERT INTO users (user_id, guild_id, username)
-                    VALUES ($1, $2, $3)
-                    RETURNING *;
-                    """,
-                    user_id, guild_id, username,
-                )
             return user
 
     async def _update_daily(self, user_id: int, guild_id: int, streak: int):

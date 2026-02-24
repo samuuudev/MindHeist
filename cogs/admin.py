@@ -433,10 +433,13 @@ class AdminCog(commands.Cog):
             )
 
             if not user:
+                # Usar upsert para evitar race condition si otra tarea inserta el usuario
                 await conn.execute(
                     """
                     INSERT INTO users (user_id, guild_id, username)
-                    VALUES ($1, $2, $3);
+                    VALUES ($1, $2, $3) ON CONFLICT (user_id) DO
+                    UPDATE
+                        SET username = EXCLUDED.username, updated_at = NOW();
                     """,
                     member.id, guild_id, member.display_name,
                 )
