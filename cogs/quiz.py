@@ -339,7 +339,7 @@ class QuizCog(commands.Cog):
             )
             return
 
-        # ── Guardar pregunta en DB ───────────────────────��─────
+        # ── Guardar pregunta en DB ─────────────────────────────
         question_id = await self._save_question(question_data)
 
         # ── Registrar usuario si es nuevo ──────────────────────
@@ -449,6 +449,11 @@ class QuizCog(commands.Cog):
                 points_earned=0, context="quiz",
                 response_time=view.response_time,
             )
+
+        # ���─ Trigger Pregunta de Oro (5% probabilidad) ──────────
+        gold_cog = self.bot.get_cog("GoldCog")
+        if gold_cog:
+            await gold_cog.try_trigger_from_quiz(interaction.guild)
 
     # ── Métodos auxiliares de base de datos ─────────────────────
     async def _get_config(self, guild_id: int) -> dict | None:
