@@ -210,12 +210,6 @@ class GoldCog(commands.Cog):
             if config["gold_channel_id"]:
                 channel = guild.get_channel(config["gold_channel_id"])
             if not channel:
-                # Buscar el primer canal de texto donde puede escribir
-                for ch in guild.text_channels:
-                    if ch.permissions_for(guild.me).send_messages:
-                        channel = ch
-                        break
-            if not channel:
                 log.warning(f"No se encontró canal para Pregunta de Oro en {guild.name}")
                 return
 
