@@ -114,6 +114,9 @@ class CompetitiveBot(commands.Bot):
     async def on_ready(self):
         log.info(f"Bot conectado como {self.user} (ID: {self.user.id})")
         log.info(f"Servidores: {len(self.guilds)}")
+
+        print(f"✅ {self.user.name} está online!")
+
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.competing,
