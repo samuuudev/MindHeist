@@ -51,7 +51,7 @@ Reglas:
     CATEGORIES = [
         "general", "science", "history", "geography",
         "entertainment", "sports", "logic", "videogames",
-        "literature", "art",
+        "literature", "art", "music",
     ]
 
     OPENTDB_CATEGORIES = {
@@ -293,6 +293,7 @@ class QuizCog(commands.Cog):
             app_commands.Choice(name="Videojuegos", value="videogames"),
             app_commands.Choice(name="Literatura", value="literature"),
             app_commands.Choice(name="Arte", value="art"),
+            app_commands.Choice(name="Musica", value="music"),
         ],
     )
     async def quiz(
