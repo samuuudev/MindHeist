@@ -465,9 +465,7 @@ class QuizCog(commands.Cog):
 
     async def _save_question(self, data: dict) -> int:
         async with self.bot.db.acquire() as conn:
-            # debug
-            print(repr(data["category"]))
-
+            category = data.get("category", "general").strip()
             return await conn.fetchval(
                 """
                 INSERT INTO questions
@@ -479,8 +477,8 @@ class QuizCog(commands.Cog):
                 json.dumps(data["options"]),
                 data["correct_index"],
                 data.get("difficulty", "medium"),
-                data.get("category", "general").strip(),
-                data.get("source", "openai")
+                category,
+                data.get("source", "openai"),
             )
 
     async def _save_answer(
