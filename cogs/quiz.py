@@ -41,7 +41,12 @@ Reglas:
 - Las 4 opciones deben ser plausibles
 - correct_index es el índice (0-3) de la respuesta correcta
 - No repitas preguntas típicas de trivia
-- Varía los temas dentro de la categoría"""
+- Varía los temas dentro de la categoría
+- Adaptate a la difucultad solicitada (easy: básica, medium: intermedia, hard: desafiante)
+- No incluyas explicaciones ni texto fuera del JSON
+- Trata de no generar preguntas con respuestas extremadamente comunes o muy fáciles de adivinar si la difultad es distinta de facil
+- Trata de no generar preguntas similares a las antes generadas recientemente para evitar repetición (aunque no es un requisito estricto)
+"""
 
     CATEGORIES = [
         "general", "science", "history", "geography",
@@ -443,12 +448,13 @@ class QuizCog(commands.Cog):
 
     async def _ensure_user(self, user_id: int, guild_id: int, username: str):
         async with self.bot.db.acquire() as conn:
+            # Upsert para evitar UniqueViolation en inserciones concurrentes
             await conn.execute(
                 """
                 INSERT INTO users (user_id, guild_id, username)
                 VALUES ($1, $2, $3)
-                ON CONFLICT (user_id) DO UPDATE
-                    SET username = $3, updated_at = NOW();
+                ON CONFLICT (user_id, guild_id) DO UPDATE
+                    SET username = EXCLUDED.username, updated_at = NOW();
                 """,
                 user_id, guild_id, username,
             )
@@ -492,11 +498,11 @@ class QuizCog(commands.Cog):
                 UPDATE users
                 SET total_quizzes = total_quizzes + 1,
                     correct_answers = correct_answers
-                        + CASE WHEN $2 THEN 1 ELSE 0 END,
+                        + CASE WHEN $3 THEN 1 ELSE 0 END,
                     updated_at = NOW()
-                WHERE user_id = $1;
+                WHERE user_id = $1 AND guild_id = $2;
                 """,
-                user_id, is_correct,
+                user_id, guild_id, is_correct,
             )
             await conn.execute(
                 """

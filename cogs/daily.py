@@ -156,7 +156,7 @@ class DailyCog(commands.Cog):
                 self._generator = QuestionGenerator()
         return self._generator
 
-    # ── /daily ─────────────────────────────────────────────────
+    # ── /daily ────────────────���────────────────────────────────
 
     @app_commands.command(
         name="daily",
@@ -348,7 +348,7 @@ class DailyCog(commands.Cog):
                     correct=False, points=0, streak=0,
                 )
 
-    # ── /streak ────────────────────────────────────────────────
+    # ── /streak ───────────────────────────────────────────────
 
     @app_commands.command(
         name="streak",
@@ -429,7 +429,7 @@ class DailyCog(commands.Cog):
             await conn.execute(
                 """
                 INSERT INTO users (user_id, guild_id, username)
-                VALUES ($1, $2, $3) ON CONFLICT (user_id) DO
+                VALUES ($1, $2, $3) ON CONFLICT (user_id, guild_id) DO
                 UPDATE
                     SET username = EXCLUDED.username, updated_at = NOW();
                 """,
@@ -493,11 +493,11 @@ class DailyCog(commands.Cog):
                 UPDATE users
                 SET total_quizzes = total_quizzes + 1,
                     correct_answers = correct_answers
-                        + CASE WHEN $2 THEN 1 ELSE 0 END,
+                        + CASE WHEN $3 THEN 1 ELSE 0 END,
                     updated_at = NOW()
-                WHERE user_id = $1;
+                WHERE user_id = $1 AND guild_id = $2;
                 """,
-                user_id, is_correct,
+                user_id, guild_id, is_correct,
             )
             await conn.execute(
                 """

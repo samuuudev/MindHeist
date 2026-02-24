@@ -321,7 +321,7 @@ class AdminCog(commands.Cog):
             name="Pregunta de Oro",
             value=(
                 f"Intervalo: **{cfg['gold_interval_min']}-"
-                f"{cfg['gold_interval_max']}** min\n"
+                f"{cfg['gold_interval_max']}** min.\n"
                 f"Chance en /quiz: **{int(cfg['gold_quiz_chance'] * 100)}%**"
             ),
             inline=True,
@@ -437,7 +437,7 @@ class AdminCog(commands.Cog):
                 await conn.execute(
                     """
                     INSERT INTO users (user_id, guild_id, username)
-                    VALUES ($1, $2, $3) ON CONFLICT (user_id) DO
+                    VALUES ($1, $2, $3) ON CONFLICT (user_id, guild_id) DO
                     UPDATE
                         SET username = EXCLUDED.username, updated_at = NOW();
                     """,
@@ -745,7 +745,7 @@ class AdminCog(commands.Cog):
                 f"Error sincronizando: {e}", ephemeral=True,
             )
 
-    # ── /status ────────────────────────────────────────────────
+    # ── /status ──────────────────────────────────────────────────
 
     @app_commands.command(
         name="status",

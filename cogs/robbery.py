@@ -629,8 +629,8 @@ class RobberyCog(commands.Cog):
                     a.username AS attacker_name,
                     v.username AS victim_name
                 FROM robberies r
-                JOIN users a ON r.attacker_id = a.user_id
-                JOIN users v ON r.victim_id = v.user_id
+                JOIN users a ON r.attacker_id = a.user_id AND r.guild_id = a.guild_id
+                JOIN users v ON r.victim_id = v.user_id AND r.guild_id = v.guild_id
                 WHERE r.guild_id = $1
                   AND (r.attacker_id = $2 OR r.victim_id = $2)
                 ORDER BY r.created_at DESC
@@ -767,7 +767,7 @@ class RobberyCog(commands.Cog):
             await conn.execute(
                 """
                 INSERT INTO users (user_id, guild_id, username)
-                VALUES ($1, $2, $3) ON CONFLICT (user_id) DO
+                VALUES ($1, $2, $3) ON CONFLICT (user_id, guild_id) DO
                 UPDATE
                     SET username = EXCLUDED.username, updated_at = NOW();
                 """,

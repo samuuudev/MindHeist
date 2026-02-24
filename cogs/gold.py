@@ -17,7 +17,7 @@ import logging
 log = logging.getLogger("bot.gold")
 
 
-# ── Vista global ───────────────────────────────────────────────
+# ── Vista global ─────────────────────────────────────────────
 
 class GoldQuestionView(discord.ui.View):
     """Botones para la Pregunta de Oro. Cualquiera puede responder, un intento por persona."""
@@ -125,7 +125,7 @@ class GoldCog(commands.Cog):
                 self._generator = QuestionGenerator()
         return self._generator
 
-    # ── Scheduler ──────────────────────────────────────────────
+    # ── Scheduler ─────────────────────────────────────────────
 
     @tasks.loop(minutes=1)
     async def gold_scheduler(self):
@@ -188,7 +188,7 @@ class GoldCog(commands.Cog):
         await self.bot.wait_until_ready()
         await asyncio.sleep(60)
 
-    # ── Lanzar evento ──────────────────────────────────────────
+    # ── Lanzar evento ─────────────────────────────────────────
 
     async def _launch_gold_event(self, guild: discord.Guild, config):
         """Ejecuta una Pregunta de Oro completa."""
@@ -331,8 +331,8 @@ class GoldCog(commands.Cog):
                         """
                         INSERT INTO users (user_id, guild_id, username)
                         VALUES ($1, $2, $3)
-                        ON CONFLICT (user_id) DO UPDATE
-                            SET username = $3, updated_at = NOW();
+                        ON CONFLICT (user_id, guild_id) DO UPDATE
+                            SET username = EXCLUDED.username, updated_at = NOW();
                         """,
                         view.winner_id, guild_id, view.winner_name,
                     )
@@ -491,7 +491,7 @@ class GoldCog(commands.Cog):
                 self._launch_gold_event(guild, dict(config)),
             )
 
-    # ── /gold ──────────────────────────────────────────────────
+    # ── /gold ─────────────────────────────────────────────────
 
     @app_commands.command(
         name="gold",
