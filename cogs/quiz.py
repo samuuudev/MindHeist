@@ -1,9 +1,4 @@
-﻿"""
-Cog Quiz — /quiz
-Preguntas de trivia con cooldown, dificultad variable y generación por IA.
-"""
-
-import html
+﻿import html
 import json
 import os
 import random
@@ -30,7 +25,7 @@ class QuestionGenerator:
     Te aportare las 10-20 ultimas preguntas para que tengas una memoria reciente y evites repetir temas, personajes, eventos o conceptos.
     
     Genera una pregunta de trivia en español.
-Categoría: {category}
+Categoria: {category}
 Dificultad: {difficulty}
 
 Responde SOLO con un JSON válido, sin texto adicional, con este formato exacto:
@@ -49,7 +44,7 @@ Reglas:
 - Varía los temas dentro de la categoría
 - Adaptate a la difucultad solicitada (easy: básica, medium: intermedia, hard: desafiante)
 - No incluyas explicaciones ni texto fuera del JSON
-- Trata de no generar preguntas con respuestas extremadamente comunes o muy fáciles de adivinar si la difultad es distinta de facil
+- Trata de no generar preguntas con respuestas extremadamente comunes o muy fáciles de adivinar si la dificultad es distinta de facil
 - Trata de no generar preguntas similares a las antes generadas recientemente para evitar repetición (aunque no es un requisito estricto)
 """
 
@@ -106,33 +101,40 @@ Reglas:
             recent_questions: list[str],
     ) -> dict | None:
         try:
-
             # 1️⃣ Formatear tu prompt base
             base_prompt = self.OPENAI_PROMPT.format(
                 category=category,
                 difficulty=difficulty,
             )
 
-            # 2️⃣ Construir bloque anti-repetición
+            # 2️⃣ Construir bloque anti-repetición con hasta 20 preguntas recientes
             recent_block = ""
             if recent_questions:
+                # Asegurarse de limitar a 20 elementos y limpiar espacios
                 formatted = "\n".join(
                     f"- {q.strip()}" for q in recent_questions[:20]
                 )
 
                 recent_block = f"""
 
-    PREGUNTAS RECIENTES (NO REPETIR NI HACER VARIANTES SIMILARES):
-    {formatted}
+PREGUNTAS RECIENTES (NO REPETIR NI HACER VARIANTES SIMILARES):
+{formatted}
 
-    Reglas adicionales obligatorias:
-    - No reutilices el mismo personaje, evento, obra o concepto.
-    - No reformules ligeramente una pregunta anterior.
-    - Si una pregunta trata sobre un tema específico, elige otro distinto.
-    """
+Reglas adicionales obligatorias:
+- No reutilices el mismo personaje, evento, obra o concepto.
+- No reformules ligeramente una pregunta anterior.
+- Si una pregunta trata sobre un tema específico, elige otro distinto.
+"""
 
-            # 3️⃣ Prompt final
+            # print("Preguntas recientes recibidas para evitar repetición:")
+            # print(recent_questions)
+            # print("Bloque anti-repetición generado:")
+            # print(recent_block)
+            # 3️⃣ Prompt final: el OPENAI_PROMPT (definido arriba) + bloque de preguntas recientes
             final_prompt = base_prompt + recent_block
+
+            # print("Prompt enviado a OpenAI:")
+            # print(final_prompt)
 
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -158,6 +160,7 @@ Reglas:
             if content.startswith("```"):
                 content = content.split("\n", 1)[1]
                 content = content.rsplit("```", 1)[0]
+
 
             data = json.loads(content)
 
@@ -253,7 +256,7 @@ class QuizView(discord.ui.View):
         async def callback(interaction: discord.Interaction):
             if interaction.user.id != self.user_id:
                 await interaction.response.send_message(
-                    "Esta pregunta no es para ti. Usa `/quiz` para la tuya.",
+                    "Esta pregunta no es para ti. Usa /quiz para la tuya.",
                     ephemeral=True,
                 )
                 return
@@ -361,14 +364,18 @@ class QuizCog(commands.Cog):
             if remaining > 0:
                 mins, secs = int(remaining // 60), int(remaining % 60)
                 await interaction.response.send_message(
-                    f"Cooldown activo. Puedes usar `/quiz` en **{mins}m {secs}s**.",
+                    f"Cooldown activo. Puedes usar /quiz en **{mins}m {secs}s**.",
                     ephemeral=True,
                 )
                 return
 
-        # Generar pregunta
+        # Seleccionar categoría efectiva y obtener las últimas 20 preguntas de esa categoría/dificultad
+        category_used = category or random.choice(self.generator.CATEGORIES)
+        recent_questions = await self._get_recent_questions(category_used, difficulty, limit=20)
+
+        # Generar pregunta (pasando recent_questions al generador)
         await interaction.response.defer(thinking=True)
-        question_data = await self.generator.generate(difficulty, category)
+        question_data = await self.generator.generate(difficulty, category_used, recent_questions)
 
         if not question_data:
             await interaction.followup.send(
@@ -424,7 +431,7 @@ class QuizCog(commands.Cog):
                 await logger.log_quiz(
                     guild_id=guild_id, user=interaction.user,
                     correct=False, points=0, difficulty=difficulty,
-                    category=category or "aleatoria", response_time=30.0,
+                    category=category_used, response_time=30.0,
                 )
             return
 
@@ -479,7 +486,7 @@ class QuizCog(commands.Cog):
             await logger.log_quiz(
                 guild_id=guild_id, user=interaction.user,
                 correct=view.is_correct, points=final_points,
-                difficulty=difficulty, category=category or "aleatoria",
+                difficulty=difficulty, category=category_used,
                 response_time=view.response_time,
             )
 
