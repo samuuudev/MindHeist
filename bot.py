@@ -50,6 +50,7 @@ COGS = [
     "cogs.gold",
     "cogs.robbery",
     "cogs.admin",
+    "cogs.updates",
 ]
 
 
