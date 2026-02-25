@@ -46,24 +46,17 @@ class DailyView(discord.ui.View):
     def _make_callback(self, index: int):
         async def callback(interaction: discord.Interaction):
             if interaction.user.id != self.user_id:
-                await interaction.response.send_message(
-                    "Esta pregunta diaria no es para ti.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message("Esta pregunta diaria no es para ti.", ephemeral=True)
                 return
 
             if self.answered:
-                await interaction.response.send_message(
-                    "Ya has respondido.", ephemeral=True,
-                )
+                await interaction.response.send_message("Ya has respondido.", ephemeral=True)
                 return
 
             self.answered = True
             self.selected_index = index
             self.is_correct = index == self.question_data["correct_index"]
-            self.response_time = (
-                datetime.utcnow() - self._start_time
-            ).total_seconds()
+            self.response_time = (datetime.utcnow() - self._start_time).total_seconds()
 
             for i, child in enumerate(self.children):
                 if isinstance(child, discord.ui.Button):
@@ -156,19 +149,12 @@ class DailyCog(commands.Cog):
                 self._generator = QuestionGenerator()
         return self._generator
 
-    # ── /daily ────────────────���────────────────────────────────
-
-    @app_commands.command(
-        name="daily",
-        description="Responde tu pregunta diaria y mantén tu racha",
-    )
+    @app_commands.command(name="daily", description="Responde tu pregunta diaria y mantén tu racha")
     async def daily(self, interaction: discord.Interaction):
         user_id = interaction.user.id
         guild_id = interaction.guild_id
 
-        user = await self._ensure_user(
-            user_id, guild_id, interaction.user.display_name,
-        )
+        user = await self._ensure_user(user_id, guild_id, interaction.user.display_name)
 
         # Cooldown
         config = await self._get_config(guild_id)
@@ -183,188 +169,102 @@ class DailyCog(commands.Cog):
                 hours = int(remaining.total_seconds() // 3600)
                 mins = int((remaining.total_seconds() % 3600) // 60)
 
-                embed = discord.Embed(
-                    title="Ya usaste tu daily hoy",
-                    description=(
-                        f"Vuelve en **{hours}h {mins}m**\n\n"
-                        f"Racha actual: **{user['daily_streak']} días**\n"
-                        f"Puntos totales: **{user['points']}**"
-                    ),
-                    color=discord.Color.orange(),
-                )
-                await interaction.response.send_message(
-                    embed=embed, ephemeral=True,
-                )
+                embed = discord.Embed(title="Ya usaste tu daily hoy",
+                                      description=(f"Vuelve en **{hours}h {mins}m**\n\nRacha actual: **{user['daily_streak']} días**\nPuntos totales: **{user['points']}**"),
+                                      color=discord.Color.orange())
+                await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
 
-        # Calcular racha
         current_streak = user["daily_streak"]
 
         if user["last_daily"]:
-            hours_since = (
-                datetime.utcnow() - user["last_daily"]
-            ).total_seconds() / 3600
+            hours_since = (datetime.utcnow() - user["last_daily"]).total_seconds() / 3600
             new_streak = current_streak + 1 if hours_since <= 48 else 1
         else:
             new_streak = 1
 
-        # Puntos
         streak_bonus = calculate_streak_bonus(new_streak)
         multiplier = await self._get_multiplier(user_id, guild_id)
         total_points = int((base_points + streak_bonus) * multiplier)
 
-        # Generar pregunta
         await interaction.response.defer(thinking=True)
-        question_data = await self.generator.generate(
-            difficulty="medium", category=None,
-        )
+        question_data = await self.generator.generate(difficulty="medium", category=None)
 
         if not question_data:
-            await interaction.followup.send(
-                "No se pudo generar una pregunta. Inténtalo de nuevo.",
-                ephemeral=True,
-            )
+            await interaction.followup.send("No se pudo generar una pregunta. Inténtalo de nuevo.", ephemeral=True)
             return
 
         question_id = await self._save_question(question_data)
 
-        # Embed
         reward_text = f"{base_points} base + {streak_bonus} racha"
         if multiplier > 1:
             reward_text += f" (x{multiplier})"
         reward_text += f" = **{total_points} pts**"
 
-        embed = discord.Embed(
-            title="Pregunta Diaria",
-            description=f"**{question_data['question']}**",
-            color=discord.Color.gold(),
-        )
-        embed.add_field(
-            name="Racha",
-            value=f"[{get_streak_tier(new_streak)}] **{new_streak} días**",
-            inline=True,
-        )
+        embed = discord.Embed(title="Pregunta Diaria", description=f"**{question_data['question']}**", color=discord.Color.gold())
+        embed.add_field(name="Racha", value=f"[{get_streak_tier(new_streak)}] **{new_streak} días**", inline=True)
         embed.add_field(name="Recompensa", value=reward_text, inline=True)
         embed.add_field(name="Tiempo", value="60 segundos", inline=True)
         embed.set_footer(text=f"Pregunta para {interaction.user.display_name}")
 
-        # Enviar y esperar
         view = DailyView(question_data, user_id)
         await interaction.followup.send(embed=embed, view=view)
         timed_out = await view.wait()
 
-        # Timeout
         if timed_out or not view.answered:
             await self._update_daily(user_id, guild_id, streak=0)
 
             correct_answer = question_data["options"][question_data["correct_index"]]
-            timeout_embed = discord.Embed(
-                title="Tiempo agotado",
-                description=(
-                    f"La respuesta era: **{correct_answer}**\n\n"
-                    f"**Racha perdida.** Volviste a 0 días."
-                ),
-                color=discord.Color.dark_red(),
-            )
+            timeout_embed = discord.Embed(title="Tiempo agotado",
+                                          description=(f"La respuesta era: **{correct_answer}**\n\n**Racha perdida.** Volviste a 0 días."),
+                                          color=discord.Color.dark_red())
             await interaction.followup.send(embed=timeout_embed)
 
-            await self._save_answer(
-                user_id, guild_id, question_id,
-                answered_index=-1, is_correct=False,
-                points_earned=0, context="daily", response_time=60.0,
-            )
+            await self._save_answer(user_id, guild_id, question_id, answered_index=-1, is_correct=False, points_earned=0, context="daily", response_time=60.0)
 
             logger = self.bot.get_cog("LoggerCog")
             if logger:
-                await logger.log_daily(
-                    guild_id=guild_id, user=interaction.user,
-                    correct=False, points=0, streak=0,
-                )
+                await logger.log_daily(guild_id=guild_id, user=interaction.user, correct=False, points=0, streak=0)
             return
 
-        # Acierto
         if view.is_correct:
             await self._update_daily(user_id, guild_id, streak=new_streak)
             await self._update_user_points(user_id, guild_id, total_points)
 
             streak_msg = get_streak_message(new_streak)
-            desc = (
-                f"**+{total_points} puntos**\n"
-                f"Respondiste en **{view.response_time:.1f}s**\n\n"
-                f"Racha: **{new_streak} días** [{get_streak_tier(new_streak)}]"
-            )
+            desc = (f"**+{total_points} puntos**\nRespondiste en **{view.response_time:.1f}s**\n\n"
+                    f"Racha: **{new_streak} días** [{get_streak_tier(new_streak)}]")
             if streak_msg:
                 desc += f"\n{streak_msg}"
 
-            result_embed = discord.Embed(
-                title="Correcto",
-                description=desc,
-                color=discord.Color.green(),
-            )
+            result_embed = discord.Embed(title="Correcto", description=desc, color=discord.Color.green())
             await interaction.followup.send(embed=result_embed)
 
-            await self._save_answer(
-                user_id, guild_id, question_id,
-                answered_index=view.selected_index, is_correct=True,
-                points_earned=total_points, context="daily",
-                response_time=view.response_time,
-            )
+            await self._save_answer(user_id, guild_id, question_id, answered_index=view.selected_index, is_correct=True, points_earned=total_points, context="daily", response_time=view.response_time)
 
-        # Fallo
         else:
             await self._update_daily(user_id, guild_id, streak=0)
 
             correct_answer = question_data["options"][question_data["correct_index"]]
-            result_embed = discord.Embed(
-                title="Incorrecto",
-                description=(
-                    f"La respuesta correcta era: **{correct_answer}**\n"
-                    f"Respondiste en **{view.response_time:.1f}s**\n\n"
-                    f"**Racha de {current_streak} días perdida.** "
-                    f"Mañana empiezas de nuevo."
-                ),
-                color=discord.Color.red(),
-            )
+            result_embed = discord.Embed(title="Incorrecto", description=(f"La respuesta correcta era: **{correct_answer}**\nRespondiste en **{view.response_time:.1f}s**\n\n**Racha de {current_streak} días perdida.** Mañana empiezas de nuevo."), color=discord.Color.red())
             await interaction.followup.send(embed=result_embed)
 
-            await self._save_answer(
-                user_id, guild_id, question_id,
-                answered_index=view.selected_index, is_correct=False,
-                points_earned=0, context="daily",
-                response_time=view.response_time,
-            )
+            await self._save_answer(user_id, guild_id, question_id, answered_index=view.selected_index, is_correct=False, points_earned=0, context="daily", response_time=view.response_time)
 
-        # Log
         logger = self.bot.get_cog("LoggerCog")
         if logger:
             if view.is_correct:
-                await logger.log_daily(
-                    guild_id=guild_id, user=interaction.user,
-                    correct=True, points=total_points, streak=new_streak,
-                )
+                await logger.log_daily(guild_id=guild_id, user=interaction.user, correct=True, points=total_points, streak=new_streak)
             else:
-                await logger.log_daily(
-                    guild_id=guild_id, user=interaction.user,
-                    correct=False, points=0, streak=0,
-                )
+                await logger.log_daily(guild_id=guild_id, user=interaction.user, correct=False, points=0, streak=0)
 
-    # ── /streak ───────────────────────────────────────────────
-
-    @app_commands.command(
-        name="streak",
-        description="Consulta tu racha diaria actual",
-    )
+    @app_commands.command(name="streak", description="Consulta tu racha diaria actual")
     async def streak(self, interaction: discord.Interaction):
-        user = await self._ensure_user(
-            interaction.user.id,
-            interaction.guild_id,
-            interaction.user.display_name,
-        )
+        user = await self._ensure_user(interaction.user.id, interaction.guild_id, interaction.user.display_name)
 
         streak = user["daily_streak"]
-        bonus = calculate_streak_bonus(streak + 1)  # Bonus del próximo día
+        bonus = calculate_streak_bonus(streak + 1)
 
-        # Próximo daily
         next_daily = "Disponible ahora"
         if user["last_daily"]:
             config = await self._get_config(interaction.guild_id)
@@ -381,20 +281,9 @@ class DailyCog(commands.Cog):
                 if hours_since > 36:
                     next_daily += "\n*Cuidado: tu racha expira pronto.*"
 
-        embed = discord.Embed(
-            title=f"Racha de {interaction.user.display_name}",
-            color=discord.Color.orange(),
-        )
-        embed.add_field(
-            name="Racha actual",
-            value=f"[{get_streak_tier(streak)}] **{streak} días**",
-            inline=True,
-        )
-        embed.add_field(
-            name="Bonus activo",
-            value=f"+{bonus} puntos extra",
-            inline=True,
-        )
+        embed = discord.Embed(title=f"Racha de {interaction.user.display_name}", color=discord.Color.orange())
+        embed.add_field(name="Racha actual", value=f"[{get_streak_tier(streak)}] **{streak} días**", inline=True)
+        embed.add_field(name="Bonus activo", value=f"+{bonus} puntos extra", inline=True)
         embed.add_field(name="Próximo /daily", value=next_daily, inline=False)
 
         progression = (
@@ -418,14 +307,11 @@ class DailyCog(commands.Cog):
 
     async def _get_config(self, guild_id: int) -> dict | None:
         async with self.bot.db.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM guild_config WHERE guild_id = $1", guild_id,
-            )
+            row = await conn.fetchrow("SELECT * FROM guild_config WHERE guild_id = $1", guild_id)
             return dict(row) if row else None
 
     async def _ensure_user(self, user_id: int, guild_id: int, username: str):
         async with self.bot.db.acquire() as conn:
-            # Hacemos un upsert para evitar race conditions que provoquen UniqueViolation
             await conn.execute(
                 """
                 INSERT INTO users (user_id, guild_id, username)
@@ -435,24 +321,12 @@ class DailyCog(commands.Cog):
                 """,
                 user_id, guild_id, username,
             )
-
-            # Recuperamos la fila ya existente/actualizada para devolverla
-            user = await conn.fetchrow(
-                "SELECT * FROM users WHERE user_id = $1 AND guild_id = $2",
-                user_id, guild_id,
-            )
+            user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1 AND guild_id = $2", user_id, guild_id)
             return user
 
     async def _update_daily(self, user_id: int, guild_id: int, streak: int):
         async with self.bot.db.acquire() as conn:
-            await conn.execute(
-                """
-                UPDATE users
-                SET last_daily = NOW(), daily_streak = $3, updated_at = NOW()
-                WHERE user_id = $1 AND guild_id = $2;
-                """,
-                user_id, guild_id, streak,
-            )
+            await conn.execute("UPDATE users SET last_daily = NOW(), daily_streak = $3, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", user_id, guild_id, streak)
 
     async def _save_question(self, data: dict) -> int:
         async with self.bot.db.acquire() as conn:
@@ -464,19 +338,11 @@ class DailyCog(commands.Cog):
                         $5::question_category, $6::question_source)
                 RETURNING question_id;
                 """,
-                data["question"],
-                json.dumps(data["options"]),
-                data["correct_index"],
-                data.get("difficulty", "medium"),
-                data.get("category", "general"),
-                data.get("source", "openai"),
+                data["question"], json.dumps(data["options"]), data["correct_index"],
+                data.get("difficulty", "medium"), data.get("category", "general"), data.get("source", "openai"),
             )
 
-    async def _save_answer(
-        self, user_id, guild_id, question_id,
-        answered_index, is_correct, points_earned,
-        context, response_time,
-    ):
+    async def _save_answer(self, user_id, guild_id, question_id, answered_index, is_correct, points_earned, context, response_time):
         async with self.bot.db.acquire() as conn:
             await conn.execute(
                 """
@@ -485,50 +351,15 @@ class DailyCog(commands.Cog):
                      is_correct, points_earned, context, response_time)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
                 """,
-                user_id, guild_id, question_id, answered_index,
-                is_correct, points_earned, context, response_time,
+                user_id, guild_id, question_id, answered_index, is_correct, points_earned, context, response_time,
             )
-            await conn.execute(
-                """
-                UPDATE users
-                SET total_quizzes = total_quizzes + 1,
-                    correct_answers = correct_answers
-                        + CASE WHEN $3 THEN 1 ELSE 0 END,
-                    updated_at = NOW()
-                WHERE user_id = $1 AND guild_id = $2;
-                """,
-                user_id, guild_id, is_correct,
-            )
-            await conn.execute(
-                """
-                UPDATE questions
-                SET times_used = times_used + 1,
-                    times_correct = times_correct
-                        + CASE WHEN $2 THEN 1 ELSE 0 END
-                WHERE question_id = $1;
-                """,
-                question_id, is_correct,
-            )
+            await conn.execute("UPDATE users SET total_quizzes = total_quizzes + 1, correct_answers = correct_answers + CASE WHEN $3 THEN 1 ELSE 0 END, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", user_id, guild_id, is_correct)
+            await conn.execute("UPDATE questions SET times_used = times_used + 1, times_correct = times_correct + CASE WHEN $2 THEN 1 ELSE 0 END WHERE question_id = $1;", question_id, is_correct)
 
     async def _update_user_points(self, user_id: int, guild_id: int, points: int):
         async with self.bot.db.acquire() as conn:
-            await conn.execute(
-                """
-                UPDATE users
-                SET points = points + $3, money = money + $3, updated_at = NOW()
-                WHERE user_id = $1 AND guild_id = $2;
-                """,
-                user_id, guild_id, points,
-            )
-            await conn.execute(
-                """
-                INSERT INTO transactions
-                    (user_id, guild_id, tx_type, points_delta,
-                     money_delta, description)
-                VALUES ($1, $2, 'daily', $3, $3, 'Pregunta diaria completada');
-                """,
-                user_id, guild_id, points,
-            )
+            await conn.execute("UPDATE users SET points = points + $3, money = money + $3, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", user_id, guild_id, points)
+            await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,'daily',$3,$3,'Pregunta diaria completada');", user_id, guild_id, points)
 
     async def _get_multiplier(self, user_id: int, guild_id: int) -> float:
         async with self.bot.db.acquire() as conn:

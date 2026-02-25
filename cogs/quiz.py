@@ -23,7 +23,7 @@ class QuestionGenerator:
     Eres un generador profesional de preguntas de trivia.
     La repetición o reformulación de preguntas recientes es un error grave.
     Te aportare las 10-20 ultimas preguntas para que tengas una memoria reciente y evites repetir temas, personajes, eventos o conceptos.
-    
+
     Genera una pregunta de trivia en español.
 Categoria: {category}
 Dificultad: {difficulty}
@@ -101,20 +101,14 @@ Reglas:
             recent_questions: list[str],
     ) -> dict | None:
         try:
-            # 1️⃣ Formatear tu prompt base
             base_prompt = self.OPENAI_PROMPT.format(
                 category=category,
                 difficulty=difficulty,
             )
 
-            # 2️⃣ Construir bloque anti-repetición con hasta 20 preguntas recientes
             recent_block = ""
             if recent_questions:
-                # Asegurarse de limitar a 20 elementos y limpiar espacios
-                formatted = "\n".join(
-                    f"- {q.strip()}" for q in recent_questions[:20]
-                )
-
+                formatted = "\n".join(f"- {q.strip()}" for q in recent_questions[:20])
                 recent_block = f"""
 
 PREGUNTAS RECIENTES (NO REPETIR NI HACER VARIANTES SIMILARES):
@@ -126,30 +120,14 @@ Reglas adicionales obligatorias:
 - Si una pregunta trata sobre un tema específico, elige otro distinto.
 """
 
-            # print("Preguntas recientes recibidas para evitar repetición:")
-            # print(recent_questions)
-            # print("Bloque anti-repetición generado:")
-            # print(recent_block)
-            # 3️⃣ Prompt final: el OPENAI_PROMPT (definido arriba) + bloque de preguntas recientes
             final_prompt = base_prompt + recent_block
-
-            # print("Prompt enviado a OpenAI:")
-            # print(final_prompt)
 
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Eres un generador profesional de preguntas de trivia. "
-                            "Evita repetición semántica."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": final_prompt,
-                    },
+                    {"role": "system",
+                     "content": "Eres un generador profesional de preguntas de trivia. Evita repetición semántica."},
+                    {"role": "user", "content": final_prompt},
                 ],
                 temperature=1.2,
                 max_tokens=400,
@@ -160,7 +138,6 @@ Reglas adicionales obligatorias:
             if content.startswith("```"):
                 content = content.split("\n", 1)[1]
                 content = content.rsplit("```", 1)[0]
-
 
             data = json.loads(content)
 
@@ -191,9 +168,7 @@ Reglas adicionales obligatorias:
             )
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url, timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     if resp.status != 200:
                         return None
                     data = await resp.json()
@@ -255,24 +230,18 @@ class QuizView(discord.ui.View):
     def _make_callback(self, index: int):
         async def callback(interaction: discord.Interaction):
             if interaction.user.id != self.user_id:
-                await interaction.response.send_message(
-                    "Esta pregunta no es para ti. Usa /quiz para la tuya.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message("Esta pregunta no es para ti. Usa /quiz para la tuya.",
+                                                        ephemeral=True)
                 return
 
             if self.answered:
-                await interaction.response.send_message(
-                    "Ya has respondido.", ephemeral=True,
-                )
+                await interaction.response.send_message("Ya has respondido.", ephemeral=True)
                 return
 
             self.answered = True
             self.selected_index = index
             self.is_correct = index == self.question_data["correct_index"]
-            self.response_time = (
-                datetime.utcnow() - self._start_time
-            ).total_seconds()
+            self.response_time = (datetime.utcnow() - self._start_time).total_seconds()
 
             for i, child in enumerate(self.children):
                 if isinstance(child, discord.ui.Button):
@@ -301,9 +270,9 @@ class QuizView(discord.ui.View):
 # ── Cog principal ──────────────────────────────────────────────
 
 DIFFICULTY_DISPLAY = {
-    "easy":   {"emoji": "🟢", "name": "Fácil"},
+    "easy": {"emoji": "🟢", "name": "Fácil"},
     "medium": {"emoji": "🟡", "name": "Media"},
-    "hard":   {"emoji": "🔴", "name": "Difícil"},
+    "hard": {"emoji": "🔴", "name": "Difícil"},
 }
 
 
@@ -352,12 +321,7 @@ class QuizCog(commands.Cog):
             app_commands.Choice(name="Musica", value="music"),
         ],
     )
-    async def quiz(
-        self,
-        interaction: discord.Interaction,
-        difficulty: str = "medium",
-        category: str | None = None,
-    ):
+    async def quiz(self, interaction: discord.Interaction, difficulty: str = "medium", category: str | None = None):
         user_id = interaction.user.id
         guild_id = interaction.guild_id
 
@@ -370,10 +334,8 @@ class QuizCog(commands.Cog):
             remaining = (cooldown_min * 60) - elapsed
             if remaining > 0:
                 mins, secs = int(remaining // 60), int(remaining % 60)
-                await interaction.response.send_message(
-                    f"Cooldown activo. Puedes usar /quiz en **{mins}m {secs}s**.",
-                    ephemeral=True,
-                )
+                await interaction.response.send_message(f"Cooldown activo. Puedes usar /quiz en **{mins}m {secs}s**.",
+                                                        ephemeral=True)
                 return
 
         # Seleccionar categoría efectiva y obtener las últimas 20 preguntas de esa categoría/dificultad
@@ -385,10 +347,7 @@ class QuizCog(commands.Cog):
         question_data = await self.generator.generate(difficulty, category_used, recent_questions)
 
         if not question_data:
-            await interaction.followup.send(
-                "No se pudo generar una pregunta. Inténtalo de nuevo.",
-                ephemeral=True,
-            )
+            await interaction.followup.send("No se pudo generar una pregunta. Inténtalo de nuevo.", ephemeral=True)
             return
 
         question_id = await self._save_question(question_data)
@@ -404,7 +363,6 @@ class QuizCog(commands.Cog):
         else:
             points = default_points.get(difficulty, 5)
 
-        # Asegurarse de que points sea un entero
         try:
             points = int(points)
         except Exception:
@@ -412,51 +370,35 @@ class QuizCog(commands.Cog):
 
         diff = DIFFICULTY_DISPLAY.get(difficulty, DIFFICULTY_DISPLAY["medium"])
 
-        embed = discord.Embed(
-            title="Quiz de Trivia",
-            description=f"**{question_data['question']}**",
-            color=discord.Color.blue(),
-        )
+        embed = discord.Embed(title="Quiz de Trivia", description=f"**{question_data['question']}**",
+                              color=discord.Color.blue())
         embed.add_field(name="Dificultad", value=f"{diff['emoji']} {diff['name']}", inline=True)
         embed.add_field(name="Recompensa", value=f"{points} puntos", inline=True)
         embed.add_field(name="Tiempo", value="30 segundos", inline=True)
         embed.set_footer(
-            text=f"Pregunta para {interaction.user.display_name} · "
-                 f"Fuente: {question_data.get('source', 'desconocida')}",
-        )
+            text=f"Pregunta para {interaction.user.display_name} · Fuente: {question_data.get('source', 'desconocida')}")
 
-        # Enviar y esperar
         view = QuizView(question_data, user_id, timeout_seconds=30)
         await interaction.followup.send(embed=embed, view=view)
         self._cooldowns[user_id] = datetime.utcnow()
 
         timed_out = await view.wait()
 
-        # Timeout
         if timed_out or not view.answered:
             correct_answer = question_data["options"][question_data["correct_index"]]
-            timeout_embed = discord.Embed(
-                title="Tiempo agotado",
-                description=f"La respuesta correcta era: **{correct_answer}**",
-                color=discord.Color.orange(),
-            )
+            timeout_embed = discord.Embed(title="Tiempo agotado",
+                                          description=f"La respuesta correcta era: **{correct_answer}**",
+                                          color=discord.Color.orange())
             await interaction.followup.send(embed=timeout_embed)
-            await self._save_answer(
-                user_id, guild_id, question_id,
-                answered_index=-1, is_correct=False,
-                points_earned=0, context="quiz", response_time=30.0,
-            )
+            await self._save_answer(user_id, guild_id, question_id, answered_index=-1, is_correct=False,
+                                    points_earned=0, context="quiz", response_time=30.0)
 
             logger = self.bot.get_cog("LoggerCog")
             if logger:
-                await logger.log_quiz(
-                    guild_id=guild_id, user=interaction.user,
-                    correct=False, points=0, difficulty=difficulty,
-                    category=category_used, response_time=30.0,
-                )
+                await logger.log_quiz(guild_id=guild_id, user=interaction.user, correct=False, points=0,
+                                      difficulty=difficulty, category=category_used, response_time=30.0)
             return
 
-        # Resultado
         final_points = 0
 
         if view.is_correct:
@@ -468,66 +410,161 @@ class QuizCog(commands.Cog):
             if multiplier > 1:
                 desc += f"\nMultiplicador activo: x{multiplier}"
 
-            result_embed = discord.Embed(
-                title="Correcto",
-                description=desc,
-                color=discord.Color.green(),
-            )
+            result_embed = discord.Embed(title="Correcto", description=desc, color=discord.Color.green())
             await interaction.followup.send(embed=result_embed)
 
-            await self._save_answer(
-                user_id, guild_id, question_id,
-                answered_index=view.selected_index, is_correct=True,
-                points_earned=final_points, context="quiz",
-                response_time=view.response_time,
-            )
+            await self._save_answer(user_id, guild_id, question_id, answered_index=view.selected_index, is_correct=True,
+                                    points_earned=final_points, context="quiz", response_time=view.response_time)
 
         else:
             correct_answer = question_data["options"][question_data["correct_index"]]
-            result_embed = discord.Embed(
-                title="Incorrecto",
-                description=(
-                    f"La respuesta correcta era: **{correct_answer}**\n"
-                    f"Respondiste en **{view.response_time:.1f}s**"
-                ),
-                color=discord.Color.red(),
-            )
+            result_embed = discord.Embed(title="Incorrecto", description=(
+                f"La respuesta correcta era: **{correct_answer}**\nRespondiste en **{view.response_time:.1f}s**"),
+                                         color=discord.Color.red())
             await interaction.followup.send(embed=result_embed)
 
-            await self._save_answer(
-                user_id, guild_id, question_id,
-                answered_index=view.selected_index, is_correct=False,
-                points_earned=0, context="quiz",
-                response_time=view.response_time,
-            )
+            await self._save_answer(user_id, guild_id, question_id, answered_index=view.selected_index,
+                                    is_correct=False, points_earned=0, context="quiz", response_time=view.response_time)
 
-        # Log
         logger = self.bot.get_cog("LoggerCog")
         if logger:
-            await logger.log_quiz(
-                guild_id=guild_id, user=interaction.user,
-                correct=view.is_correct, points=final_points,
-                difficulty=difficulty, category=category_used,
-                response_time=view.response_time,
-            )
+            await logger.log_quiz(guild_id=guild_id, user=interaction.user, correct=view.is_correct,
+                                  points=final_points, difficulty=difficulty, category=category_used,
+                                  response_time=view.response_time)
 
-        # Trigger Pregunta de Oro (probabilidad configurable)
         gold_cog = self.bot.get_cog("GoldCog")
         if gold_cog:
             await gold_cog.try_trigger_from_quiz(interaction.guild)
 
-    # Añadir dentro de la clase QuizCog
+    # ── Base de datos helpers ──────────────────────────────────
+
     async def _get_config(self, guild_id: int) -> dict | None:
-        """
-        Devuelve la fila de configuración del guild desde la tabla guild_config
-        o None si no existe.
-        """
+        async with self.bot.db.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM guild_config WHERE guild_id = $1", guild_id)
+            return dict(row) if row else None
+
+    async def _get_recent_questions(self, category: str, difficulty: str, limit: int = 20) -> list[str]:
+        try:
+            async with self.bot.db.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT content
+                    FROM questions
+                    WHERE category = $1
+                      AND difficulty = $2::question_difficulty
+                    ORDER BY created_at DESC
+                        LIMIT $3;
+                    """,
+                    category, difficulty, limit,
+                )
+            return [r["content"] for r in rows] if rows else []
+        except Exception as e:
+            log.warning(f"Error obteniendo preguntas recientes (cat={category}, diff={difficulty}): {e}")
+            return []
+
+    async def _ensure_user(self, user_id: int, guild_id: int, username: str):
+        async with self.bot.db.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO users (user_id, guild_id, username)
+                VALUES ($1, $2, $3) ON CONFLICT (user_id, guild_id) DO
+                UPDATE
+                    SET username = EXCLUDED.username, updated_at = NOW();
+                """,
+                user_id, guild_id, username,
+            )
+            user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1 AND guild_id = $2", user_id, guild_id)
+            return user
+
+    async def _save_question(self, data: dict) -> int:
+        async with self.bot.db.acquire() as conn:
+            return await conn.fetchval(
+                """
+                INSERT INTO questions
+                    (content, options, correct_index, difficulty, category, source)
+                VALUES ($1, $2::jsonb, $3, $4::question_difficulty,
+                        $5::question_category, $6::question_source) RETURNING question_id;
+                """,
+                data["question"], json.dumps(data["options"]), data["correct_index"], data.get("difficulty", "medium"),
+                data.get("category", "general"), data.get("source", "openai"),
+            )
+
+    async def _save_answer(self, user_id, guild_id, question_id, answered_index, is_correct, points_earned, context,
+                           response_time):
+        async with self.bot.db.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO answer_history
+                (user_id, guild_id, question_id, answered_index,
+                 is_correct, points_earned, context, response_time)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+                """,
+                user_id, guild_id, question_id, answered_index, is_correct, points_earned, context, response_time,
+            )
+            await conn.execute(
+                """
+                UPDATE users
+                SET total_quizzes   = total_quizzes + 1,
+                    correct_answers = correct_answers
+                        + CASE WHEN $3 THEN 1 ELSE 0 END,
+                    updated_at      = NOW()
+                WHERE user_id = $1
+                  AND guild_id = $2;
+                """,
+                user_id, guild_id, is_correct,
+            )
+            await conn.execute(
+                """
+                UPDATE questions
+                SET times_used    = times_used + 1,
+                    times_correct = times_correct
+                        + CASE WHEN $2 THEN 1 ELSE 0 END
+                WHERE question_id = $1;
+                """,
+                question_id, is_correct,
+            )
+
+    async def _update_user_points(self, user_id: int, guild_id: int, points: int):
+        async with self.bot.db.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE users
+                SET points     = points + $3,
+                    money      = money + $3,
+                    updated_at = NOW()
+                WHERE user_id = $1
+                  AND guild_id = $2;
+                """,
+                user_id, guild_id, points,
+            )
+            await conn.execute(
+                """
+                INSERT INTO transactions
+                (user_id, guild_id, tx_type, points_delta,
+                 money_delta, description)
+                VALUES ($1, $2, 'quiz', $3, $3, 'Quiz completado');
+                """,
+                user_id, guild_id, points,
+            )
+
+    async def _get_multiplier(self, user_id: int, guild_id: int) -> float:
         async with self.bot.db.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT * FROM guild_config WHERE guild_id = $1",
-                guild_id,
+                """
+                SELECT multiplier
+                FROM temp_roles
+                WHERE user_id = $1
+                  AND guild_id = $2
+                  AND role_type = 'multiplier'
+                  AND removed = FALSE
+                  AND expires_at > NOW()
+                ORDER BY multiplier DESC LIMIT 1;
+                """,
+                user_id, guild_id,
             )
-            return dict(row) if row else None
+            return row["multiplier"] if row else 1.0
+
+
 async def setup(bot: commands.Bot):
     cog = QuizCog(bot)
     await bot.add_cog(cog)

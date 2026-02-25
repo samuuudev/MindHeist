@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from dotenv import load_dotenv
 import asyncpg
 
@@ -77,7 +77,6 @@ class TriviaBot(commands.Bot):
 
     async def setup_hook(self):
         """Se ejecuta antes de conectar a Discord. Inicializa DB y cogs."""
-
         print("DATABASE_URL usada:", DATABASE_URL)
         # Conexión a PostgreSQL
         log.info("Conectando a PostgreSQL...")
@@ -147,6 +146,7 @@ class TriviaBot(commands.Bot):
                 name="/quiz · /daily · /rank",
             )
         )
+
     async def on_guild_join(self, guild: discord.Guild):
         """Se ejecuta cuando el bot se une a un nuevo servidor."""
         log.info(f"Nuevo servidor unido: {guild.name} (ID: {guild.id})")

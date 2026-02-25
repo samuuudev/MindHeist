@@ -36,12 +36,7 @@ class UpdatesCog(commands.Cog):
             for message in lines:
                 message = message.strip()
                 if message:
-                    embed = discord.Embed(
-                        title="📢 Nueva actualización",
-                        description=message,
-                        color=discord.Color.blue(),
-                        timestamp=datetime.datetime.utcnow()
-                    )
+                    embed = discord.Embed(title="📢 Nueva actualización", description=message, color=discord.Color.blue(), timestamp=datetime.datetime.utcnow())
                     embed.set_footer(text="Enviado desde VPS al iniciar el bot")
                     await channel.send(embed=embed)
                     print(f"Actualización enviada: {message}")
