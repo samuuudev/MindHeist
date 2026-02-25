@@ -24,7 +24,12 @@ log = logging.getLogger("bot.quiz")
 class QuestionGenerator:
     """Genera preguntas desde OpenAI (primario) u Open Trivia DB (fallback)."""
 
-    OPENAI_PROMPT = """Genera una pregunta de trivia en español.
+    OPENAI_PROMPT = """
+    Eres un generador profesional de preguntas de trivia.
+    La repetición o reformulación de preguntas recientes es un error grave.
+    Te aportare las 10-20 ultimas preguntas para que tengas una memoria reciente y evites repetir temas, personajes, eventos o conceptos.
+    
+    Genera una pregunta de trivia en español.
 Categoría: {category}
 Dificultad: {difficulty}
 
@@ -66,13 +71,23 @@ Reglas:
         self.openai_client = openai.AsyncOpenAI(api_key=api_key) if api_key else None
 
     async def generate(
-        self, difficulty: str = "medium", category: str | None = None,
+            self,
+            difficulty: str = "medium",
+            category: str | None = None,
+            recent_questions: list[str] | None = None,
     ) -> dict | None:
-        """Genera una pregunta. Intenta OpenAI primero, fallback a OpenTDB."""
+        """
+        Genera una pregunta. Intenta OpenAI primero, fallback a OpenTDB.
+        Puede recibir una lista de preguntas recientes para evitar repetición.
+        """
         cat = category or random.choice(self.CATEGORIES)
 
         if self.openai_client:
-            result = await self._from_openai(difficulty, cat)
+            result = await self._from_openai(
+                difficulty,
+                cat,
+                recent_questions or [],
+            )
             if result:
                 result["source"] = "openai"
                 return result
@@ -84,29 +99,60 @@ Reglas:
 
         return None
 
-    async def _from_openai(self, difficulty: str, category: str) -> dict | None:
-        """Genera una pregunta con GPT-4o-mini."""
+    async def _from_openai(
+            self,
+            difficulty: str,
+            category: str,
+            recent_questions: list[str],
+    ) -> dict | None:
         try:
+
+            # 1️⃣ Formatear tu prompt base
+            base_prompt = self.OPENAI_PROMPT.format(
+                category=category,
+                difficulty=difficulty,
+            )
+
+            # 2️⃣ Construir bloque anti-repetición
+            recent_block = ""
+            if recent_questions:
+                formatted = "\n".join(
+                    f"- {q.strip()}" for q in recent_questions[:20]
+                )
+
+                recent_block = f"""
+
+    PREGUNTAS RECIENTES (NO REPETIR NI HACER VARIANTES SIMILARES):
+    {formatted}
+
+    Reglas adicionales obligatorias:
+    - No reutilices el mismo personaje, evento, obra o concepto.
+    - No reformules ligeramente una pregunta anterior.
+    - Si una pregunta trata sobre un tema específico, elige otro distinto.
+    """
+
+            # 3️⃣ Prompt final
+            final_prompt = base_prompt + recent_block
+
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {
                         "role": "system",
                         "content": (
-                            "Eres un generador de preguntas de trivia. "
-                            "Responde SOLO con JSON válido."
+                            "Eres un generador profesional de preguntas de trivia. "
+                            "Evita repetición semántica."
                         ),
                     },
                     {
                         "role": "user",
-                        "content": self.OPENAI_PROMPT.format(
-                            category=category, difficulty=difficulty,
-                        ),
+                        "content": final_prompt,
                     },
                 ],
-                temperature=1.0,
-                max_tokens=300,
+                temperature=1.2,
+                max_tokens=400,
             )
+
             content = response.choices[0].message.content.strip()
 
             if content.startswith("```"):
@@ -116,11 +162,11 @@ Reglas:
             data = json.loads(content)
 
             if (
-                "question" in data
-                and "options" in data
-                and "correct_index" in data
-                and len(data["options"]) == 4
-                and 0 <= data["correct_index"] <= 3
+                    "question" in data
+                    and "options" in data
+                    and "correct_index" in data
+                    and len(data["options"]) == 4
+                    and 0 <= data["correct_index"] <= 3
             ):
                 data["category"] = category
                 data["difficulty"] = difficulty
@@ -572,6 +618,21 @@ class QuizCog(commands.Cog):
                 user_id, guild_id,
             )
             return row["multiplier"] if row else 1.0
+
+    async def _get_recent_questions(self, category: str, difficulty: str, limit: int = 15):
+        async with self.bot.db.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT content
+                FROM questions
+                WHERE category = $1
+                  AND difficulty = $2
+                ORDER BY created_at DESC
+                    LIMIT $3;
+                """,
+                category, difficulty, limit,
+            )
+            return [r["content"] for r in rows]
 
 
 async def setup(bot: commands.Bot):
