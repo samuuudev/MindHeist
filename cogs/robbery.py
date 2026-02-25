@@ -1,10 +1,6 @@
 ﻿"""
 Cog Robo PvP — /robar, /escudo, /estado_escudo, /robos, /debug_set_escudo
-Re-estructurado para:
-- Escudos por puntos (por defecto la compra sin args pone 24h).
-- Comandos: estado_escudo, debug_set_escudo, robar, robos.
-- Robos con pregunta difícil: si aciertas robas puntos del objetivo; si fallas pierdes el 10% de tus puntos.
-- Facilidades de testing: debug_set_escudo permite añadir/quitar escudos sin permisos admin (controlado por DEV_USER_IDS o flag en guild_config).
+Re-estructurado y corregido para que cuadre con el schema SQL proporcionado.
 """
 
 import os
@@ -73,11 +69,10 @@ class RobberyView(discord.ui.View):
                     elif i == index and not self.is_correct:
                         child.style = discord.ButtonStyle.danger
 
-            # Intentar editar el mensaje (puede fallar en algunos casos; no es crítico)
+            # Intentar editar el mensaje (no crítico si falla)
             try:
                 await interaction.response.edit_message(view=self)
             except Exception:
-                # fallback: ack with a followup
                 try:
                     await interaction.followup.send("Respuesta registrada.", ephemeral=True)
                 except Exception:
@@ -100,21 +95,15 @@ class RobberyView(discord.ui.View):
 
 # ── Configuración de escudos y comportamiento ─────────────────
 
-# Opciones "nominales" por si quieres ofrecer presets. Los costes serán recalculados
 PRESET_SHIELDS = {
     "1h": {"hours": 1, "name": "1 hora"},
     "6h": {"hours": 6, "name": "6 horas"},
     "24h": {"hours": 24, "name": "24 horas"},
 }
 
-# Coste base en puntos por hora (ajusta a gusto)
 COST_POINTS_PER_HOUR = 5
-
-# Robos: porcentajes por defecto para calcular cuánto se puede robar del objetivo
 DEFAULT_ROBBERY_MIN_PCT = 0.05
 DEFAULT_ROBBERY_MAX_PCT = 0.20
-
-# Penalización por fallo: 10% de puntos del atacante
 FAIL_PENALTY_PCT = 0.10
 
 
@@ -123,19 +112,13 @@ class RobberyCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # Dev IDs desde ENV para testing del debug_set_escudo
         dev_ids = os.getenv("DEV_USER_IDS", "")
         self.dev_user_ids = {int(x) for x in dev_ids.split(",") if x.strip().isdigit()}
-
-        self._generator = None  # se resuelve con QuizCog si está cargado
+        self._generator = None
 
     # ---------------- utilities ----------------
 
     async def _safe_defer(self, interaction: discord.Interaction, *, thinking: bool = True) -> bool:
-        """
-        Intenta defer la interacción. Devuelve True si defer se realizó OK.
-        Si ya está respondida / expirada devuelve False.
-        """
         try:
             if interaction.response.is_done():
                 return False
@@ -146,21 +129,18 @@ class RobberyCog(commands.Cog):
 
     @property
     def generator(self):
-        """Reutiliza el generador de preguntas del QuizCog si existe."""
         if self._generator is None:
             quiz_cog = self.bot.get_cog("QuizCog")
             if quiz_cog:
                 self._generator = quiz_cog.generator
             else:
-                # Fallback mínimo que devuelve None (evita crashes)
                 class _Stub:
-                    async def generate(self, *args, **kwargs):
+                    async def generate(self, *a, **k):
                         return None
                 self._generator = _Stub()
         return self._generator
 
     def _is_dev_or_allowed(self, interaction: discord.Interaction, guild_config: dict | None) -> bool:
-        """Permitir debug a devs o si guild_config.allow_test_shields está activado."""
         if interaction.user.id in self.dev_user_ids:
             return True
         if getattr(self.bot, "owner_id", None) and interaction.user.id == self.bot.owner_id:
@@ -169,14 +149,14 @@ class RobberyCog(commands.Cog):
             return True
         return False
 
-    # ---------------- comandos públicos ----------------
+    # ---------------- comandos ----------------
 
     @app_commands.command(name="estado_escudo", description="Muestra quién tiene escudo activo o el estado de un miembro.")
     @app_commands.describe(member="Miembro (opcional). Si no se indica, lista los escudos activos.")
     async def estado_escudo(self, interaction: discord.Interaction, member: discord.Member | None = None):
         did_defer = await self._safe_defer(interaction)
-
         guild_id = interaction.guild_id
+
         async with self.bot.db.acquire() as conn:
             if member:
                 row = await conn.fetchrow(
@@ -226,30 +206,22 @@ class RobberyCog(commands.Cog):
     ])
     async def escudo(self, interaction: discord.Interaction, duration: str | None = "24h"):
         did_defer = await self._safe_defer(interaction)
-
         user_id = interaction.user.id
         guild_id = interaction.guild_id
 
-        # elegir preset (default 24h)
         preset_key = duration or "24h"
         preset = PRESET_SHIELDS.get(preset_key, PRESET_SHIELDS["24h"])
         hours = preset["hours"]
         name = preset["name"]
-
-        cost = max(1, int(COST_POINTS_PER_HOUR * hours))  # coste en puntos
+        cost = max(1, int(COST_POINTS_PER_HOUR * hours))
 
         async with self.bot.db.acquire() as conn:
             user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1 AND guild_id = $2", user_id, guild_id)
-
             if not user:
-                # crear fila básica si no existe
-                await conn.execute(
-                    "INSERT INTO users (user_id, guild_id, username, created_at, points) VALUES ($1,$2,$3,NOW(),0) ON CONFLICT DO NOTHING",
-                    user_id, guild_id, interaction.user.display_name
-                )
+                await conn.execute("INSERT INTO users (user_id, guild_id, username, created_at, points) VALUES ($1,$2,$3,NOW(),0) ON CONFLICT DO NOTHING",
+                                   user_id, guild_id, interaction.user.display_name)
                 user = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1 AND guild_id = $2", user_id, guild_id)
 
-            # si ya tiene escudo activo, no comprar (simplifica)
             if user.get("shield_until") and user["shield_until"] > datetime.utcnow():
                 remaining = user["shield_until"] - datetime.utcnow()
                 hours_r = int(remaining.total_seconds() // 3600)
@@ -271,14 +243,10 @@ class RobberyCog(commands.Cog):
                 return
 
             expires = datetime.utcnow() + timedelta(hours=hours)
-            await conn.execute(
-                "UPDATE users SET points = points - $3, shield_until = $4, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2",
-                user_id, guild_id, cost, expires
-            )
-            await conn.execute(
-                "INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,$3,$4,$5,$6)",
-                user_id, guild_id, "shield_buy", -cost, 0, f"Compra escudo {name}"
-            )
+            await conn.execute("UPDATE users SET points = points - $3, shield_until = $4, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2",
+                               user_id, guild_id, cost, expires)
+            await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,$3,$4,$5,$6)",
+                               user_id, guild_id, "shield_buy", -cost, 0, f"Compra escudo {name}")
 
         embed = discord.Embed(
             title="Escudo activado",
@@ -295,10 +263,7 @@ class RobberyCog(commands.Cog):
         if logger:
             await logger.log_shield(guild_id=guild_id, user=interaction.user, duration=name, cost=cost)
 
-    @app_commands.command(
-        name="debug_set_escudo",
-        description="(DEBUG) Forzar o quitar escudo a un usuario — usar solo para testing"
-    )
+    @app_commands.command(name="debug_set_escudo", description="(DEBUG) Forzar o quitar escudo a un usuario — usar solo para testing")
     @app_commands.describe(member="Miembro", duration="1h|6h|24h o 'clear' para quitar")
     @app_commands.choices(duration=[
         app_commands.Choice(name="1 hora", value="1h"),
@@ -308,7 +273,6 @@ class RobberyCog(commands.Cog):
     ])
     async def debug_set_escudo(self, interaction: discord.Interaction, member: discord.Member, duration: str):
         did_defer = await self._safe_defer(interaction)
-
         guild_id = interaction.guild_id
         config = await self._get_config(guild_id)
 
@@ -343,7 +307,6 @@ class RobberyCog(commands.Cog):
 
         expires = datetime.utcnow() + timedelta(hours=preset["hours"])
         async with self.bot.db.acquire() as conn:
-            # Asegurar que existe el usuario
             await conn.execute(
                 "INSERT INTO users (user_id, guild_id, username, created_at, points) VALUES ($1,$2,$3,NOW(),0) ON CONFLICT (user_id, guild_id) DO UPDATE SET username = EXCLUDED.username, updated_at = NOW()",
                 member.id, guild_id, member.display_name
@@ -362,11 +325,9 @@ class RobberyCog(commands.Cog):
     @app_commands.describe(victim="El jugador al que quieres robar")
     async def robar(self, interaction: discord.Interaction, victim: discord.Member):
         did_defer = await self._safe_defer(interaction)
-
         attacker = interaction.user
         guild_id = interaction.guild_id
 
-        # validaciones
         if victim.id == attacker.id:
             txt = "No puedes robarte a ti mismo."
             if did_defer:
@@ -383,7 +344,6 @@ class RobberyCog(commands.Cog):
                 await interaction.response.send_message(txt, ephemeral=True)
             return
 
-        # asegurar config y usuarios
         config = await self._get_config(guild_id)
         async with self.bot.db.acquire() as conn:
             if not config:
@@ -393,7 +353,6 @@ class RobberyCog(commands.Cog):
             attacker_row = await self._ensure_user_row(attacker.id, guild_id, attacker.display_name)
             victim_row = await self._ensure_user_row(victim.id, guild_id, victim.display_name)
 
-        # protección por creación reciente (24h)
         if victim_row["created_at"] > datetime.utcnow() - timedelta(hours=24):
             txt = f"**{victim.display_name}** es nuevo y tiene protección de 24h."
             if did_defer:
@@ -402,7 +361,6 @@ class RobberyCog(commands.Cog):
                 await interaction.response.send_message(txt, ephemeral=True)
             return
 
-        # protección por escudo
         if victim_row.get("shield_until") and victim_row["shield_until"] > datetime.utcnow():
             remaining = victim_row["shield_until"] - datetime.utcnow()
             mins = int(remaining.total_seconds() // 60)
@@ -413,7 +371,6 @@ class RobberyCog(commands.Cog):
                 await interaction.response.send_message(txt, ephemeral=True)
             return
 
-        # cooldown sencillo: usar last_robbery en minutos
         cooldown_min = config.get("robbery_cooldown_min", 5)
         if attacker_row.get("last_robbery"):
             elapsed = (datetime.utcnow() - attacker_row["last_robbery"]).total_seconds()
@@ -427,7 +384,6 @@ class RobberyCog(commands.Cog):
                     await interaction.response.send_message(txt, ephemeral=True)
                 return
 
-        # límite diario simple
         max_daily = config.get("max_robberies_daily", 5)
         if attacker_row.get("robberies_today", 0) >= max_daily:
             txt = f"Has alcanzado el límite diario de **{max_daily}** robos."
@@ -437,8 +393,6 @@ class RobberyCog(commands.Cog):
                 await interaction.response.send_message(txt, ephemeral=True)
             return
 
-        # Generar pregunta difícil
-        # enviamos un followup ephemeral indicando generación si defer ya hecho
         if did_defer:
             await interaction.followup.send("Generando pregunta difícil...", ephemeral=True)
 
@@ -451,10 +405,8 @@ class RobberyCog(commands.Cog):
                 await interaction.response.send_message(txt, ephemeral=True)
             return
 
-        # registrar pregunta en DB
         qid = await self._save_question(question_data)
 
-        # calcular cuánto se puede robar: porcentaje aleatorio de puntos de la víctima
         min_pct = config.get("robbery_min_pct", DEFAULT_ROBBERY_MIN_PCT)
         max_pct = config.get("robbery_max_pct", DEFAULT_ROBBERY_MAX_PCT)
         steal_pct = random.uniform(min_pct, max_pct)
@@ -465,7 +417,6 @@ class RobberyCog(commands.Cog):
         potential_steal = max(1, int(victim_points * steal_pct))
         fail_loss = max(1, int(attacker_points * FAIL_PENALTY_PCT))
 
-        # mensaje principal con vista
         embed = discord.Embed(
             title="Intento de robo",
             description=f"**{attacker.display_name}** intenta robar a **{victim.display_name}**.\n\n**{question_data['question']}**",
@@ -475,38 +426,29 @@ class RobberyCog(commands.Cog):
         embed.add_field(name="Si fallas", value=f"Pierdes **{fail_loss}** puntos (10% de tus puntos).", inline=False)
         embed.set_footer(text=f"Solo {attacker.display_name} puede responder · Tiempo: 20s")
 
-        # Enviar embed + vista. Si defer fue hecho, usar followup.send
-        if did_defer:
-            sent = await interaction.followup.send(content=f"{victim.mention} — Están intentando robarte.", embed=embed, view=RobberyView(question_data, attacker.id))
-        else:
-            # no deferido, enviar respuesta normal
-            await interaction.response.send_message(content=f"{victim.mention} — Están intentando robarte.", embed=embed, view=RobberyView(question_data, attacker.id))
-            # message object not captured in this branch, view.wait still works
-
-        # actualizar cooldown y contador de intentos
-        async with self.bot.db.acquire() as conn:
-            await conn.execute("UPDATE users SET last_robbery = NOW(), robberies_today = robberies_today + 1, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2", attacker.id, guild_id)
-
-        # esperar resultado en la vista: buscar la vista en el mensaje no es necesario; RobberyView.stop() liberará wait()
-        # Para simplificar, reconstruimos la view localmente to wait on it: (we already passed one to send; here we wait on a new one won't work)
-        # Instead, rely on ephemeral "followup" we already sent above; but to detect answer we need to capture the view instance passed to send.
-        # To keep things simple and reliable, re-fetch the message the bot just sent and get its components isn't straightforward.
-        # A practical approach: embed the view we created and hold reference by creating it first and passing it to send while retaining ref.
-
-        # Re-send with retained view reference if we didn't keep it
-        # (Better approach: create view before sending and keep it)
+        # crear view una vez y enviarla, mantener referencia para wait()
         view = RobberyView(question_data, attacker.id, timeout_seconds=20)
-        # If we deferred and used followup earlier, delete the ephemeral "generating..." message isn't necessary
 
-        # Send a separate message that contains the view and embed (non-ephemeral) so we can wait reliably
-        msg = await interaction.channel.send(content=f"{victim.mention} — Intento de robo (respuesta del atacante):", embed=embed, view=view)
+        try:
+            if did_defer:
+                sent_msg = await interaction.followup.send(content=f"{victim.mention} — Están intentando robarte.", embed=embed, view=view)
+            else:
+                sent_msg = await interaction.response.send_message(content=f"{victim.mention} — Están intentando robarte.", embed=embed, view=view)
+                # response.send_message returns a message-like proxy; sent_msg may be None in some branches, but view.wait() sigue funcionando
+        except Exception:
+            # fallback: enviar por canal directamente (no ephemeral)
+            try:
+                sent_msg = await interaction.channel.send(content=f"{victim.mention} — Están intentando robarte.", embed=embed, view=view)
+            except Exception:
+                sent_msg = None
 
-        # Wait for the view
+        async with self.bot.db.acquire() as conn:
+            await conn.execute("UPDATE users SET last_robbery = NOW(), robberies_today = robberies_today + 1, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2",
+                               attacker.id, guild_id)
+
         timed_out = await view.wait()
 
-        # Resultado -> aplicar efectos
         if timed_out or not view.answered:
-            # timeout -> tratar como fallo
             await self._apply_rob_failure(attacker, victim, guild_id, qid, fail_loss, view_response_time=20.0, answered_index=-1, reason="timeout")
             return
 
@@ -546,12 +488,12 @@ class RobberyCog(commands.Cog):
             t = f"<t:{int(row['created_at'].timestamp())}:R>"
             if row["attacker_id"] == user_id:
                 if row["success"]:
-                    lines.append(f"Robaste **{row['points_changed']}** a {row['victim_name']} · {t}")
+                    lines.append(f"Robaste **{row['points_change']}** a {row['victim_name']} · {t}")
                 else:
-                    lines.append(f"Fallo al robar a {row['victim_name']} · Perdiste **{abs(row['points_changed'])}** · {t}")
+                    lines.append(f"Fallo al robar a {row['victim_name']} · Perdiste **{abs(row['points_change'])}** · {t}")
             else:
                 if row["success"]:
-                    lines.append(f"{row['attacker_name']} te robó **{row['points_changed']}** · {t}")
+                    lines.append(f"{row['attacker_name']} te robó **{row['points_change']}** · {t}")
                 else:
                     lines.append(f"{row['attacker_name']} intentó robarte y falló · {t}")
 
@@ -565,11 +507,9 @@ class RobberyCog(commands.Cog):
 
     async def _apply_rob_success(self, attacker: discord.User, victim: discord.Member, guild_id: int, question_id: int, stolen_points: int, view_response_time: float, answered_index: int):
         async with self.bot.db.acquire() as conn:
-            # Bloquear fila de la víctima para evitar condiciones de carrera
             victim_points = await conn.fetchval("SELECT points FROM users WHERE user_id = $1 AND guild_id = $2 FOR UPDATE", victim.id, guild_id)
             actual_stolen = min(stolen_points, victim_points or 0)
             if actual_stolen <= 0:
-                # víctima no tiene puntos
                 channel = self._get_channel_for_user(attacker, victim)
                 embed = discord.Embed(title="Robo vacío", description=f"**{victim.display_name}** no tiene puntos para robar.", color=discord.Color.greyple())
                 await channel.send(embed=embed)
@@ -578,9 +518,8 @@ class RobberyCog(commands.Cog):
             await conn.execute("UPDATE users SET points = points - $3, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2", victim.id, guild_id, actual_stolen)
             await conn.execute("UPDATE users SET points = points + $3, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2", attacker.id, guild_id, actual_stolen)
 
-            # registrar en robberies (points_changed positivo para éxito)
             await conn.execute(
-                "INSERT INTO robberies (attacker_id, victim_id, guild_id, question_id, success, points_changed, created_at) VALUES ($1,$2,$3,$4,TRUE,$5,NOW())",
+                "INSERT INTO robberies (attacker_id, victim_id, guild_id, question_id, success, points_change, created_at) VALUES ($1,$2,$3,$4,TRUE,$5,NOW())",
                 attacker.id, victim.id, guild_id, question_id, actual_stolen
             )
 
@@ -593,7 +532,6 @@ class RobberyCog(commands.Cog):
                 victim.id, guild_id, "rob_lose", -actual_stolen, 0, f"Robado por {attacker.display_name}"
             )
 
-        # Notificar en canal público (canal: usar el último channel donde se ejecutó, simplificamos enviando al primer texto channel accessible)
         channel = self._get_channel_for_user(attacker, victim)
         embed = discord.Embed(
             title="Robo exitoso",
@@ -610,21 +548,18 @@ class RobberyCog(commands.Cog):
 
     async def _apply_rob_failure(self, attacker: discord.User, victim: discord.Member, guild_id: int, question_id: int, loss_points: int, view_response_time: float, answered_index: int, reason: str = "wrong"):
         async with self.bot.db.acquire() as conn:
-            # Bloquear fila del atacante
             attacker_points = await conn.fetchval("SELECT points FROM users WHERE user_id = $1 AND guild_id = $2 FOR UPDATE", attacker.id, guild_id)
             actual_loss = min(loss_points, max(0, attacker_points or 0))
             await conn.execute("UPDATE users SET points = GREATEST(0, points - $3), updated_at = NOW() WHERE user_id = $1 AND guild_id = $2", attacker.id, guild_id, actual_loss)
 
-            # registrar robbery con points_changed negativo
-            await conn.execute("INSERT INTO robberies (attacker_id, victim_id, guild_id, question_id, success, points_changed, created_at) VALUES ($1,$2,$3,$4,FALSE,$5,NOW())",
+            await conn.execute("INSERT INTO robberies (attacker_id, victim_id, guild_id, question_id, success, points_change, created_at) VALUES ($1,$2,$3,$4,FALSE,$5,NOW())",
                                attacker.id, victim.id, guild_id, question_id, -actual_loss)
 
             await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,$3,$4,$5,$6)",
-                               attacker.id, guild_id, -actual_loss, 0, f"Robo fallido contra {victim.display_name}")
+                               attacker.id, guild_id, "rob_fail", -actual_loss, 0, f"Robo fallido contra {victim.display_name}")
 
         channel = self._get_channel_for_user(attacker, victim)
         correct = None
-        # obtener pregunta correcta para mostrar (si fue guardada)
         try:
             async with self.bot.db.acquire() as conn:
                 row = await conn.fetchrow("SELECT content, options, correct_index FROM questions WHERE question_id = $1", question_id)
@@ -663,13 +598,13 @@ class RobberyCog(commands.Cog):
     async def _ensure_user_row(self, user_id: int, guild_id: int, username: str) -> dict:
         """
         Asegura que exista la fila users y devuelve la fila actualizada.
-        Campos relevantes esperados: points, shield_until, created_at, last_robbery, robberies_today
+        Se inicializa points a 0 (coincide con schema).
         """
         async with self.bot.db.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO users (user_id, guild_id, username, created_at, points)
-                VALUES ($1, $2, $3, NOW(), COALESCE((SELECT default_points FROM guild_config WHERE guild_id = $2), 0))
+                VALUES ($1, $2, $3, NOW(), 0)
                 ON CONFLICT (user_id, guild_id) DO UPDATE
                     SET username = EXCLUDED.username, updated_at = NOW();
                 """,
@@ -679,7 +614,6 @@ class RobberyCog(commands.Cog):
             return dict(row) if row else {}
 
     async def _save_question(self, data: dict) -> int | None:
-        """Guarda pregunta en tabla questions si existe y retorna question_id (o None)."""
         try:
             async with self.bot.db.acquire() as conn:
                 qid = await conn.fetchval(
@@ -697,20 +631,15 @@ class RobberyCog(commands.Cog):
             return None
 
     def _get_channel_for_user(self, *users) -> discord.abc.Messageable:
-        """
-        Heurística para elegir un canal donde avisar (usa el canal de la primera guild text channel encontrado).
-        Si no puede, retorna el propio bot.user (para evitar crash).
-        """
-        # Preferir el channel of last context isn't tracked; safe fallback to first guild text channel accessible
         try:
             for g in self.bot.guilds:
                 for ch in g.text_channels:
-                    # escoger primer canal donde el bot pueda enviar mensajes
                     if ch.permissions_for(g.me).send_messages:
                         return ch
         except Exception:
             pass
-        return self.bot.user  # fallback, send will fail silently
+        # fallback: intentar canal directo del primer guild del bot
+        return self.bot.user
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(RobberyCog(bot))
