@@ -215,9 +215,10 @@ class QuizView(discord.ui.View):
         self.response_time: float = 0.0
         self._start_time = datetime.utcnow()
 
-        for i, option in enumerate(question_data["options"]):
+        # Use short labels on buttons (A/B/C/D) to avoid Discord 80-char limit
+        for i, _ in enumerate(question_data["options"]):
             button = discord.ui.Button(
-                label=option,
+                label=self.LABELS[i],
                 emoji=self.EMOJIS[i],
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"quiz_option_{i}",
@@ -244,12 +245,21 @@ class QuizView(discord.ui.View):
             for i, child in enumerate(self.children):
                 if isinstance(child, discord.ui.Button):
                     child.disabled = True
+                    # Mark correct / wrong visually by style (buttons show letter)
                     if i == self.question_data["correct_index"]:
                         child.style = discord.ButtonStyle.success
                     elif i == index and not self.is_correct:
                         child.style = discord.ButtonStyle.danger
 
-            await interaction.response.edit_message(view=self)
+            # Try to edit message; if it fails, silently continue
+            try:
+                await interaction.response.edit_message(view=self)
+            except Exception:
+                try:
+                    await interaction.followup.send("Respuesta registrada.", ephemeral=True)
+                except Exception:
+                    pass
+
             self.stop()
 
         return callback
@@ -367,7 +377,16 @@ class QuizCog(commands.Cog):
 
         diff = DIFFICULTY_DISPLAY.get(difficulty, DIFFICULTY_DISPLAY["medium"])
 
+        # Build embed and include full options there (so buttons can be short letters)
+        options_lines = []
+        for i, opt in enumerate(question_data["options"]):
+            label = QuizView.LABELS[i]
+            emoji = QuizView.EMOJIS[i]
+            # Escape and limit nothing here — embed field supports long text (up to 1024 chars)
+            options_lines.append(f"{emoji} **{label}** — {opt}")
+
         embed = discord.Embed(title="Quiz de Trivia", description=f"**{question_data['question']}**", color=discord.Color.blue())
+        embed.add_field(name="Opciones", value="\n".join(options_lines), inline=False)
         embed.add_field(name="Dificultad", value=f"{diff['emoji']} {diff['name']}", inline=True)
         embed.add_field(name="Recompensa", value=f"{points} puntos", inline=True)
         embed.add_field(name="Tiempo", value="30 segundos", inline=True)
