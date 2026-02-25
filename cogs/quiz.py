@@ -125,8 +125,7 @@ Reglas adicionales obligatorias:
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system",
-                     "content": "Eres un generador profesional de preguntas de trivia. Evita repetición semántica."},
+                    {"role": "system", "content": "Eres un generador profesional de preguntas de trivia. Evita repetición semántica."},
                     {"role": "user", "content": final_prompt},
                 ],
                 temperature=1.2,
@@ -230,8 +229,7 @@ class QuizView(discord.ui.View):
     def _make_callback(self, index: int):
         async def callback(interaction: discord.Interaction):
             if interaction.user.id != self.user_id:
-                await interaction.response.send_message("Esta pregunta no es para ti. Usa /quiz para la tuya.",
-                                                        ephemeral=True)
+                await interaction.response.send_message("Esta pregunta no es para ti. Usa /quiz para la tuya.", ephemeral=True)
                 return
 
             if self.answered:
@@ -334,8 +332,7 @@ class QuizCog(commands.Cog):
             remaining = (cooldown_min * 60) - elapsed
             if remaining > 0:
                 mins, secs = int(remaining // 60), int(remaining % 60)
-                await interaction.response.send_message(f"Cooldown activo. Puedes usar /quiz en **{mins}m {secs}s**.",
-                                                        ephemeral=True)
+                await interaction.response.send_message(f"Cooldown activo. Puedes usar /quiz en **{mins}m {secs}s**.", ephemeral=True)
                 return
 
         # Seleccionar categoría efectiva y obtener las últimas 20 preguntas de esa categoría/dificultad
@@ -370,13 +367,11 @@ class QuizCog(commands.Cog):
 
         diff = DIFFICULTY_DISPLAY.get(difficulty, DIFFICULTY_DISPLAY["medium"])
 
-        embed = discord.Embed(title="Quiz de Trivia", description=f"**{question_data['question']}**",
-                              color=discord.Color.blue())
+        embed = discord.Embed(title="Quiz de Trivia", description=f"**{question_data['question']}**", color=discord.Color.blue())
         embed.add_field(name="Dificultad", value=f"{diff['emoji']} {diff['name']}", inline=True)
         embed.add_field(name="Recompensa", value=f"{points} puntos", inline=True)
         embed.add_field(name="Tiempo", value="30 segundos", inline=True)
-        embed.set_footer(
-            text=f"Pregunta para {interaction.user.display_name} · Fuente: {question_data.get('source', 'desconocida')}")
+        embed.set_footer(text=f"Pregunta para {interaction.user.display_name} · Fuente: {question_data.get('source', 'desconocida')}")
 
         view = QuizView(question_data, user_id, timeout_seconds=30)
         await interaction.followup.send(embed=embed, view=view)
@@ -386,17 +381,13 @@ class QuizCog(commands.Cog):
 
         if timed_out or not view.answered:
             correct_answer = question_data["options"][question_data["correct_index"]]
-            timeout_embed = discord.Embed(title="Tiempo agotado",
-                                          description=f"La respuesta correcta era: **{correct_answer}**",
-                                          color=discord.Color.orange())
+            timeout_embed = discord.Embed(title="Tiempo agotado", description=f"La respuesta correcta era: **{correct_answer}**", color=discord.Color.orange())
             await interaction.followup.send(embed=timeout_embed)
-            await self._save_answer(user_id, guild_id, question_id, answered_index=-1, is_correct=False,
-                                    points_earned=0, context="quiz", response_time=30.0)
+            await self._save_answer(user_id, guild_id, question_id, answered_index=-1, is_correct=False, points_earned=0, context="quiz", response_time=30.0)
 
             logger = self.bot.get_cog("LoggerCog")
             if logger:
-                await logger.log_quiz(guild_id=guild_id, user=interaction.user, correct=False, points=0,
-                                      difficulty=difficulty, category=category_used, response_time=30.0)
+                await logger.log_quiz(guild_id=guild_id, user=interaction.user, correct=False, points=0, difficulty=difficulty, category=category_used, response_time=30.0)
             return
 
         final_points = 0
@@ -413,24 +404,18 @@ class QuizCog(commands.Cog):
             result_embed = discord.Embed(title="Correcto", description=desc, color=discord.Color.green())
             await interaction.followup.send(embed=result_embed)
 
-            await self._save_answer(user_id, guild_id, question_id, answered_index=view.selected_index, is_correct=True,
-                                    points_earned=final_points, context="quiz", response_time=view.response_time)
+            await self._save_answer(user_id, guild_id, question_id, answered_index=view.selected_index, is_correct=True, points_earned=final_points, context="quiz", response_time=view.response_time)
 
         else:
             correct_answer = question_data["options"][question_data["correct_index"]]
-            result_embed = discord.Embed(title="Incorrecto", description=(
-                f"La respuesta correcta era: **{correct_answer}**\nRespondiste en **{view.response_time:.1f}s**"),
-                                         color=discord.Color.red())
+            result_embed = discord.Embed(title="Incorrecto", description=(f"La respuesta correcta era: **{correct_answer}**\nRespondiste en **{view.response_time:.1f}s**"), color=discord.Color.red())
             await interaction.followup.send(embed=result_embed)
 
-            await self._save_answer(user_id, guild_id, question_id, answered_index=view.selected_index,
-                                    is_correct=False, points_earned=0, context="quiz", response_time=view.response_time)
+            await self._save_answer(user_id, guild_id, question_id, answered_index=view.selected_index, is_correct=False, points_earned=0, context="quiz", response_time=view.response_time)
 
         logger = self.bot.get_cog("LoggerCog")
         if logger:
-            await logger.log_quiz(guild_id=guild_id, user=interaction.user, correct=view.is_correct,
-                                  points=final_points, difficulty=difficulty, category=category_used,
-                                  response_time=view.response_time)
+            await logger.log_quiz(guild_id=guild_id, user=interaction.user, correct=view.is_correct, points=final_points, difficulty=difficulty, category=category_used, response_time=view.response_time)
 
         gold_cog = self.bot.get_cog("GoldCog")
         if gold_cog:
@@ -453,7 +438,7 @@ class QuizCog(commands.Cog):
                     WHERE category = $1
                       AND difficulty = $2::question_difficulty
                     ORDER BY created_at DESC
-                        LIMIT $3;
+                    LIMIT $3;
                     """,
                     category, difficulty, limit,
                 )
@@ -485,12 +470,10 @@ class QuizCog(commands.Cog):
                 VALUES ($1, $2::jsonb, $3, $4::question_difficulty,
                         $5::question_category, $6::question_source) RETURNING question_id;
                 """,
-                data["question"], json.dumps(data["options"]), data["correct_index"], data.get("difficulty", "medium"),
-                data.get("category", "general"), data.get("source", "openai"),
+                data["question"], json.dumps(data["options"]), data["correct_index"], data.get("difficulty", "medium"), data.get("category", "general"), data.get("source", "openai"),
             )
 
-    async def _save_answer(self, user_id, guild_id, question_id, answered_index, is_correct, points_earned, context,
-                           response_time):
+    async def _save_answer(self, user_id, guild_id, question_id, answered_index, is_correct, points_earned, context, response_time):
         async with self.bot.db.acquire() as conn:
             await conn.execute(
                 """
