@@ -315,6 +315,13 @@ class QuizCog(commands.Cog):
         self.generator = QuestionGenerator()
         self._cooldowns: dict[int, datetime] = {}
 
+    # Puntos base por dificultad (valores por defecto)
+    DIFFICULTY_BASE_POINTS = {
+        "easy": 3,
+        "medium": 5,
+        "hard": 8,
+    }
+
     # ── /quiz ──────────────────────────────────────────────────
 
     @app_commands.command(
@@ -387,8 +394,22 @@ class QuizCog(commands.Cog):
         question_id = await self._save_question(question_data)
         await self._ensure_user(user_id, guild_id, interaction.user.display_name)
 
-        # Embed
-        points = config["quiz_points"] if config else 5
+        # Determinar puntos según dificultad (prioridad: quiz_points_<difficulty> -> quiz_points -> default map)
+        default_points = self.DIFFICULTY_BASE_POINTS
+        if config:
+            points = config.get(
+                f"quiz_points_{difficulty}",
+                config.get("quiz_points", default_points.get(difficulty, 5)),
+            )
+        else:
+            points = default_points.get(difficulty, 5)
+
+        # Asegurarse de que points sea un entero
+        try:
+            points = int(points)
+        except Exception:
+            points = default_points.get(difficulty, 5)
+
         diff = DIFFICULTY_DISPLAY.get(difficulty, DIFFICULTY_DISPLAY["medium"])
 
         embed = discord.Embed(
@@ -494,152 +515,6 @@ class QuizCog(commands.Cog):
         gold_cog = self.bot.get_cog("GoldCog")
         if gold_cog:
             await gold_cog.try_trigger_from_quiz(interaction.guild)
-
-    # ── Base de datos ──────────────────────────────────────────
-
-    async def _get_config(self, guild_id: int) -> dict | None:
-        async with self.bot.db.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM guild_config WHERE guild_id = $1", guild_id,
-            )
-            return dict(row) if row else None
-
-    async def _ensure_user(self, user_id: int, guild_id: int, username: str):
-        async with self.bot.db.acquire() as conn:
-            # Upsert para evitar UniqueViolation en inserciones concurrentes
-            await conn.execute(
-                """
-                INSERT INTO users (user_id, guild_id, username)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (user_id, guild_id) DO UPDATE
-                    SET username = EXCLUDED.username, updated_at = NOW();
-                """,
-                user_id, guild_id, username,
-            )
-
-    async def _save_question(self, data: dict) -> int:
-        async with self.bot.db.acquire() as conn:
-            category = data.get("category", "general").strip()
-
-            # Escapar correctamente y añadir categoría si no existe
-            await conn.execute(f"""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_type t
-                    JOIN pg_enum e ON t.oid = e.enumtypid
-                    WHERE t.typname = 'question_category'
-                      AND e.enumlabel = '{category.replace("'", "''")}'
-                ) THEN
-                    ALTER TYPE question_category ADD VALUE '{category.replace("'", "''")}';
-                END IF;
-            END $$;
-            """)
-
-            return await conn.fetchval(
-                """
-                INSERT INTO questions
-                    (content, options, correct_index, difficulty, category, source)
-                VALUES ($1, $2::jsonb, $3, $4::question_difficulty,
-                        $5::question_category, $6::question_source) RETURNING question_id;
-                """,
-                data["question"],
-                json.dumps(data["options"]),
-                data["correct_index"],
-                data.get("difficulty", "medium"),
-                category,
-                data.get("source", "openai"),
-            )
-
-    async def _save_answer(
-        self, user_id, guild_id, question_id,
-        answered_index, is_correct, points_earned,
-        context, response_time,
-    ):
-        async with self.bot.db.acquire() as conn:
-
-            await conn.execute(
-                """
-                INSERT INTO answer_history
-                    (user_id, guild_id, question_id, answered_index,
-                     is_correct, points_earned, context, response_time)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
-                """,
-                user_id, guild_id, question_id, answered_index,
-                is_correct, points_earned, context, response_time,
-            )
-            await conn.execute(
-                """
-                UPDATE users
-                SET total_quizzes = total_quizzes + 1,
-                    correct_answers = correct_answers
-                        + CASE WHEN $3 THEN 1 ELSE 0 END,
-                    updated_at = NOW()
-                WHERE user_id = $1 AND guild_id = $2;
-                """,
-                user_id, guild_id, is_correct,
-            )
-            await conn.execute(
-                """
-                UPDATE questions
-                SET times_used = times_used + 1,
-                    times_correct = times_correct
-                        + CASE WHEN $2 THEN 1 ELSE 0 END
-                WHERE question_id = $1;
-                """,
-                question_id, is_correct,
-            )
-
-    async def _update_user_points(self, user_id: int, guild_id: int, points: int):
-        async with self.bot.db.acquire() as conn:
-            await conn.execute(
-                """
-                UPDATE users
-                SET points = points + $3, money = money + $3, updated_at = NOW()
-                WHERE user_id = $1 AND guild_id = $2;
-                """,
-                user_id, guild_id, points,
-            )
-            await conn.execute(
-                """
-                INSERT INTO transactions
-                    (user_id, guild_id, tx_type, points_delta,
-                     money_delta, description)
-                VALUES ($1, $2, 'quiz', $3, $3, 'Quiz completado');
-                """,
-                user_id, guild_id, points,
-            )
-
-    async def _get_multiplier(self, user_id: int, guild_id: int) -> float:
-        async with self.bot.db.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                SELECT multiplier FROM temp_roles
-                WHERE user_id = $1 AND guild_id = $2
-                  AND role_type = 'multiplier'
-                  AND removed = FALSE
-                  AND expires_at > NOW()
-                ORDER BY multiplier DESC
-                LIMIT 1;
-                """,
-                user_id, guild_id,
-            )
-            return row["multiplier"] if row else 1.0
-
-    async def _get_recent_questions(self, category: str, difficulty: str, limit: int = 15):
-        async with self.bot.db.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT content
-                FROM questions
-                WHERE category = $1
-                  AND difficulty = $2
-                ORDER BY created_at DESC
-                    LIMIT $3;
-                """,
-                category, difficulty, limit,
-            )
-            return [r["content"] for r in rows]
 
 
 async def setup(bot: commands.Bot):
