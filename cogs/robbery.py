@@ -263,7 +263,8 @@ class RobberyCog(commands.Cog):
         if logger:
             await logger.log_shield(guild_id=guild_id, user=interaction.user, duration=name, cost=cost)
 
-    @app_commands.command(name="debug_set_escudo", description="(DEBUG) Forzar o quitar escudo a un usuario — usar solo para testing")
+    @app_commands.command(name="debug_set_escudo",
+                          description="(DEBUG) Forzar o quitar escudo a un usuario — uso temporal para testing (GLOBAL)")
     @app_commands.describe(member="Miembro", duration="1h|6h|24h o 'clear' para quitar")
     @app_commands.choices(duration=[
         app_commands.Choice(name="1 hora", value="1h"),
@@ -272,23 +273,25 @@ class RobberyCog(commands.Cog):
         app_commands.Choice(name="Quitar escudo", value="clear"),
     ])
     async def debug_set_escudo(self, interaction: discord.Interaction, member: discord.Member, duration: str):
+        """
+        Versión temporal para TEST: permite a cualquier usuario poner/quitar escudos.
+        Nota: mover al AdminCog y restaurar permisos cuando termines las pruebas.
+        """
         did_defer = await self._safe_defer(interaction)
         guild_id = interaction.guild_id
-        config = await self._get_config(guild_id)
 
-        if not self._is_dev_or_allowed(interaction, config):
-            msg = "No tienes permiso para usar este comando de debug."
-            if did_defer:
-                await interaction.followup.send(msg, ephemeral=True)
-            else:
-                await interaction.response.send_message(msg, ephemeral=True)
-            return
+        # Eliminado el check de permisos para permitir uso global en testing
 
         if duration == "clear":
             async with self.bot.db.acquire() as conn:
-                await conn.execute("UPDATE users SET shield_until = NULL, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2", member.id, guild_id)
-                await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,$3,$4,$5,$6)",
-                                   interaction.user.id, guild_id, "shield_debug", 0, 0, f"Debug quitó escudo a {member.display_name}")
+                await conn.execute(
+                    "UPDATE users SET shield_until = NULL, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2",
+                    member.id, guild_id,
+                )
+                await conn.execute(
+                    "INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,$3,$4,$5,$6)",
+                    interaction.user.id, guild_id, "shield_debug", 0, 0, f"Debug quitó escudo a {member.display_name}"
+                )
             text = f"Escudo de {member.display_name} eliminado (modo debug)."
             if did_defer:
                 await interaction.followup.send(text, ephemeral=True)
@@ -307,13 +310,21 @@ class RobberyCog(commands.Cog):
 
         expires = datetime.utcnow() + timedelta(hours=preset["hours"])
         async with self.bot.db.acquire() as conn:
+            # Asegurar existencia del usuario
             await conn.execute(
-                "INSERT INTO users (user_id, guild_id, username, created_at, points) VALUES ($1,$2,$3,NOW(),0) ON CONFLICT (user_id, guild_id) DO UPDATE SET username = EXCLUDED.username, updated_at = NOW()",
+                "INSERT INTO users (user_id, guild_id, username, created_at, points) VALUES ($1,$2,$3,NOW(),0) "
+                "ON CONFLICT (user_id, guild_id) DO UPDATE SET username = EXCLUDED.username, updated_at = NOW()",
                 member.id, guild_id, member.display_name
             )
-            await conn.execute("UPDATE users SET shield_until = $3, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2", member.id, guild_id, expires)
-            await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,$3,$4,$5,$6)",
-                               interaction.user.id, guild_id, "shield_debug", 0, 0, f"Debug puso escudo a {member.display_name} por {preset['name']}")
+            await conn.execute(
+                "UPDATE users SET shield_until = $3, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2",
+                member.id, guild_id, expires
+            )
+            await conn.execute(
+                "INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,$3,$4,$5,$6)",
+                interaction.user.id, guild_id, "shield_debug", 0, 0,
+                f"Debug puso escudo a {member.display_name} por {preset['name']}"
+            )
 
         text = f"Escudo activado para {member.display_name} hasta <t:{int(expires.timestamp())}:R> (modo debug)."
         if did_defer:

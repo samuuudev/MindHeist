@@ -516,7 +516,18 @@ class QuizCog(commands.Cog):
         if gold_cog:
             await gold_cog.try_trigger_from_quiz(interaction.guild)
 
-
+    # Añadir dentro de la clase QuizCog
+    async def _get_config(self, guild_id: int) -> dict | None:
+        """
+        Devuelve la fila de configuración del guild desde la tabla guild_config
+        o None si no existe.
+        """
+        async with self.bot.db.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM guild_config WHERE guild_id = $1",
+                guild_id,
+            )
+            return dict(row) if row else None
 async def setup(bot: commands.Bot):
     cog = QuizCog(bot)
     await bot.add_cog(cog)
