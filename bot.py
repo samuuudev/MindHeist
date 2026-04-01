@@ -133,10 +133,21 @@ class TriviaBot(commands.Bot):
         # Señal para Pterodactyl (marca el servidor como Online)
         print(f"{self.user.name} está online!")
 
-        # Sincronizar comandos slash
+        # Sincronizar comandos slash (por guild = instantáneo, sin duplicados)
         try:
-            synced = await self.tree.sync()
-            log.info(f"Comandos sincronizados: {len(synced)}")
+            # Sync por guild (instantáneo en cada servidor)
+            for guild in self.guilds:
+                try:
+                    self.tree.copy_global_to(guild=guild)
+                    await self.tree.sync(guild=guild)
+                    log.info(f"  Comandos sincronizados en: {guild.name}")
+                except Exception as e:
+                    log.warning(f"  Error sincronizando en {guild.name}: {e}")
+
+            # Limpiar comandos globales de Discord para evitar duplicados
+            self.tree.clear_commands(guild=None)
+            await self.tree.sync()
+            log.info("Comandos globales limpiados de Discord.")
         except Exception as e:
             log.error(f"Error sincronizando comandos: {e}")
 
@@ -151,6 +162,14 @@ class TriviaBot(commands.Bot):
         """Se ejecuta cuando el bot se une a un nuevo servidor."""
         log.info(f"Nuevo servidor unido: {guild.name} (ID: {guild.id})")
         print(f"[NUEVO SERVIDOR] {guild.name}")
+
+        # Sincronizar comandos en el nuevo servidor al instante
+        try:
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            log.info(f"  Comandos sincronizados en nuevo servidor: {guild.name}")
+        except Exception as e:
+            log.warning(f"  Error sincronizando en {guild.name}: {e}")
 
     async def close(self):
         """Limpieza al cerrar el bot."""

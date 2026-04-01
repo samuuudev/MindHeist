@@ -14,7 +14,6 @@ CREATE TABLE users (
     username        VARCHAR(64) NOT NULL,
     points          INTEGER NOT NULL DEFAULT 0,
     money           INTEGER NOT NULL DEFAULT 0,
-    elo             INTEGER NOT NULL DEFAULT 1000,
     daily_streak    INTEGER NOT NULL DEFAULT 0,
     last_daily      TIMESTAMP,
     gold_wins       INTEGER NOT NULL DEFAULT 0,
@@ -29,7 +28,6 @@ CREATE TABLE users (
 );
 
 CREATE INDEX idx_users_points ON users (guild_id, points DESC);
-CREATE INDEX idx_users_elo ON users (guild_id, elo DESC);
 CREATE INDEX idx_users_gold_wins ON users (guild_id, gold_wins DESC);
 
 -- ============================================================

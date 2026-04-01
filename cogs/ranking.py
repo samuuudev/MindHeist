@@ -38,18 +38,6 @@ TOP_QUERIES = {
         "field": "points",
         "format": lambda v: f"**{v:,}** pts",
     },
-    "money": {
-        "order": "money DESC",
-        "title": "Top por Dinero",
-        "field": "money",
-        "format": lambda v: f"**{v:,}**",
-    },
-    "elo": {
-        "order": "elo DESC",
-        "title": "Top por ELO",
-        "field": "elo",
-        "format": lambda v: f"**{v}** ELO",
-    },
     "streak": {
         "order": "daily_streak DESC",
         "title": "Top por Racha Daily",
@@ -158,10 +146,8 @@ class RankingCog(commands.Cog):
 
         embed.add_field(name="Posición", value=f"**{pos_display}** de {total_users}", inline=True)
         embed.add_field(name="Puntos", value=f"**{user['points']:,}**", inline=True)
-        embed.add_field(name="Dinero", value=f"**{user['money']:,}**", inline=True)
         embed.add_field(name="Racha daily", value=f"**{user['daily_streak']}** días", inline=True)
         embed.add_field(name="Victorias de Oro", value=f"**{user['gold_wins']}**", inline=True)
-        embed.add_field(name="ELO", value=f"**{user['elo']}**", inline=True)
 
         embed.add_field(
             name=f"Precisión ({user['correct_answers']}/{user['total_quizzes']})",
@@ -200,8 +186,6 @@ class RankingCog(commands.Cog):
     @app_commands.choices(
         category=[
             app_commands.Choice(name="Puntos", value="points"),
-            app_commands.Choice(name="Dinero", value="money"),
-            app_commands.Choice(name="ELO", value="elo"),
             app_commands.Choice(name="Racha Daily", value="streak"),
             app_commands.Choice(name="Victorias de Oro", value="gold"),
             app_commands.Choice(name="Precisión", value="accuracy"),
@@ -222,7 +206,7 @@ class RankingCog(commands.Cog):
         async with self.bot.db.acquire() as conn:
             rows = await conn.fetch(
                 f"""
-                SELECT user_id, username, points, money, elo,
+                SELECT user_id, username, points,
                        daily_streak, gold_wins, total_quizzes, correct_answers
                 FROM users
                 WHERE guild_id = $1 AND total_quizzes > 0
@@ -349,7 +333,7 @@ class RankingCog(commands.Cog):
                 SELECT
                     COUNT(*) AS total,
                     SUM(CASE WHEN success THEN 1 ELSE 0 END) AS wins,
-                    SUM(money_stolen) AS total_money
+                    SUM(CASE WHEN success THEN points_change ELSE 0 END) AS total_stolen
                 FROM robberies
                 WHERE attacker_id = $1 AND guild_id = $2;
                 """,
@@ -360,7 +344,7 @@ class RankingCog(commands.Cog):
                 """
                 SELECT
                     COUNT(*) AS total,
-                    SUM(CASE WHEN success THEN money_stolen ELSE 0 END) AS total_lost
+                    SUM(CASE WHEN success THEN points_change ELSE 0 END) AS total_lost
                 FROM robberies
                 WHERE victim_id = $1 AND guild_id = $2;
                 """,
@@ -382,8 +366,6 @@ class RankingCog(commands.Cog):
             name="General",
             value=(
                 f"Puntos: **{user['points']:,}**\n"
-                f"Dinero: **{user['money']:,}**\n"
-                f"ELO: **{user['elo']}**\n"
                 f"Racha: **{user['daily_streak']}** días\n"
                 f"Victorias de Oro: **{user['gold_wins']}**"
             ),
@@ -438,7 +420,7 @@ class RankingCog(commands.Cog):
                     f"**Atacante:**\n"
                     f"Intentos: **{rob_stats['total']}** · "
                     f"Éxitos: **{rob_stats['wins']}** ({rob_ratio:.0f}%)\n"
-                    f"Dinero robado: **{rob_stats['total_money'] or 0:,}**\n"
+                    f"Puntos robados: **{rob_stats['total_stolen'] or 0:,}**\n"
                 )
             if has_robbed:
                 robbed_total = robbed_stats["total"]
@@ -446,7 +428,7 @@ class RankingCog(commands.Cog):
                 rob_text += (
                     f"\n**Víctima:**\n"
                     f"Veces robado: **{robbed_total}** · "
-                    f"Dinero perdido: **{robbed_lost:,}**"
+                    f"Puntos perdidos: **{robbed_lost:,}**"
                 )
             embed.add_field(name="Robos", value=rob_text, inline=False)
 
@@ -589,7 +571,7 @@ class TopPaginationView(discord.ui.View):
         async with self.cog.bot.db.acquire() as conn:
             rows = await conn.fetch(
                 f"""
-                SELECT user_id, username, points, money, elo,
+                SELECT user_id, username, points,
                        daily_streak, gold_wins, total_quizzes, correct_answers
                 FROM users
                 WHERE guild_id = $1 AND total_quizzes > 0

@@ -358,8 +358,8 @@ class DailyCog(commands.Cog):
 
     async def _update_user_points(self, user_id: int, guild_id: int, points: int):
         async with self.bot.db.acquire() as conn:
-            await conn.execute("UPDATE users SET points = points + $3, money = money + $3, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", user_id, guild_id, points)
-            await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,'daily',$3,$3,'Pregunta diaria completada');", user_id, guild_id, points)
+            await conn.execute("UPDATE users SET points = points + $3, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", user_id, guild_id, points)
+            await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,'daily',$3,0,'Pregunta diaria completada');", user_id, guild_id, points)
 
     async def _get_multiplier(self, user_id: int, guild_id: int) -> float:
         async with self.bot.db.acquire() as conn:

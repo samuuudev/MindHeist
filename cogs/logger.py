@@ -126,20 +126,20 @@ class LoggerCog(commands.Cog):
     async def log_robbery(self, guild_id: int, attacker: discord.Member, victim: discord.Member, success: bool, amount: int):
         if success:
             title = "Robo exitoso"
-            desc = f"{attacker.mention} robó **{amount}** monedas a {victim.mention}."
+            desc = f"{attacker.mention} robó **{amount}** puntos a {victim.mention}."
         else:
             title = "Robo fallido"
-            desc = f"{attacker.mention} intentó robar a {victim.mention} y perdió **{amount}** monedas."
+            desc = f"{attacker.mention} intentó robar a {victim.mention} y perdió **{amount}** puntos."
 
         await self.send_log(guild_id=guild_id, log_type=LogType.ROBBERY, title=title, description=desc, fields=[
             {"name": "Resultado", "value": "Exitoso" if success else "Fallido"},
-            {"name": "Cantidad", "value": f"{amount} monedas"},
+            {"name": "Cantidad", "value": f"{amount} puntos"},
         ], user=attacker, target=victim)
 
     async def log_shield(self, guild_id: int, user: discord.Member, duration: str, cost: int):
         await self.send_log(guild_id=guild_id, log_type=LogType.ECONOMY, title="Escudo comprado", description=f"{user.mention} compró un escudo de **{duration}**.", fields=[
             {"name": "Duración", "value": duration},
-            {"name": "Coste", "value": f"{cost} monedas"},
+            {"name": "Coste", "value": f"{cost} puntos"},
         ], user=user)
 
     async def log_admin_give(self, guild_id: int, admin: discord.Member, target: discord.Member, points: int, money: int):

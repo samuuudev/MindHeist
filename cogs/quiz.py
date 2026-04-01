@@ -532,7 +532,6 @@ class QuizCog(commands.Cog):
                 """
                 UPDATE users
                 SET points     = points + $3,
-                    money      = money + $3,
                     updated_at = NOW()
                 WHERE user_id = $1
                   AND guild_id = $2;
@@ -544,7 +543,7 @@ class QuizCog(commands.Cog):
                 INSERT INTO transactions
                 (user_id, guild_id, tx_type, points_delta,
                  money_delta, description)
-                VALUES ($1, $2, 'quiz', $3, $3, 'Quiz completado');
+                VALUES ($1, $2, 'quiz', $3, 0, 'Quiz completado');
                 """,
                 user_id, guild_id, points,
             )

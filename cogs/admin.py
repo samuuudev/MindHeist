@@ -201,7 +201,7 @@ class AdminCog(commands.Cog):
         embed.add_field(name="Canales", value=(f"Quiz: {ch_mention(cfg['quiz_channel_id'])}\nOro: {ch_mention(cfg['gold_channel_id'])}\nLogs: {ch_mention(cfg['log_channel_id'])}"), inline=False)
         embed.add_field(name="Puntos", value=(f"Daily: **{cfg['daily_points']}** pts\nQuiz: **{cfg['quiz_points']}** pts\nOro: **{cfg['gold_min_points']}-{cfg['gold_max_points']}** pts"), inline=True)
         embed.add_field(name="Cooldowns", value=(f"Daily: **{cfg['daily_cooldown_hours']}h**\nQuiz: **{cfg['quiz_cooldown_min']}** min\nRobo: **{cfg['robbery_cooldown_min']}** min"), inline=True)
-        embed.add_field(name="Robos", value=(f"Éxito: **{int(cfg['robbery_min_pct'] * 100)}-{int(cfg['robbery_max_pct'] * 100)}%** del dinero\nFallo: **-{int(cfg['robbery_fail_pct'] * 100)}%** propio\nMáx diarios: **{cfg['max_robberies_daily']}**\nDinero mín víctima: **{cfg['min_money_to_rob']}**"), inline=True)
+        embed.add_field(name="Robos", value=(f"Éxito: **{int(cfg['robbery_min_pct'] * 100)}-{int(cfg['robbery_max_pct'] * 100)}%** de los puntos\nFallo: **-{int(cfg['robbery_fail_pct'] * 100)}%** propio\nPuntos mín víctima: **{cfg['min_money_to_rob']}**"), inline=True)
 
         embed.add_field(name="Pregunta de Oro", value=(f"Intervalo: **{cfg['gold_interval_min']}-{cfg['gold_interval_max']}** min.\nChance en /quiz: **{int(cfg['gold_quiz_chance'] * 100)}%**"), inline=True)
         embed.add_field(name="Roles del Top", value=roles_text, inline=True)
@@ -222,8 +222,7 @@ class AdminCog(commands.Cog):
         app_commands.Choice(name="Cooldown Quiz (min)", value="quiz_cooldown_min"),
         app_commands.Choice(name="Cooldown Daily (horas)", value="daily_cooldown_hours"),
         app_commands.Choice(name="Cooldown Robo (min)", value="robbery_cooldown_min"),
-        app_commands.Choice(name="Máx robos diarios", value="max_robberies_daily"),
-        app_commands.Choice(name="Dinero mín para robar", value="min_money_to_rob"),
+        app_commands.Choice(name="Puntos mín para robar", value="min_money_to_rob"),
         app_commands.Choice(name="Intervalo Oro mín (min)", value="gold_interval_min"),
         app_commands.Choice(name="Intervalo Oro máx (min)", value="gold_interval_max"),
         app_commands.Choice(name="Chance Oro en Quiz (%)", value="gold_quiz_chance"),
@@ -246,15 +245,10 @@ class AdminCog(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ── /give ──────────────────────────────────────────────────
-    @app_commands.command(name="give", description="[Admin] Dar o quitar puntos/dinero a un usuario")
+    @app_commands.command(name="give", description="[Admin] Dar o quitar puntos a un usuario")
     @app_commands.default_permissions(administrator=True)
-    @app_commands.describe(member="Usuario objetivo", amount="Cantidad (negativa para quitar)", currency="Tipo de moneda")
-    @app_commands.choices(currency=[
-        app_commands.Choice(name="Puntos", value="points"),
-        app_commands.Choice(name="Dinero", value="money"),
-        app_commands.Choice(name="Ambos", value="both"),
-    ])
-    async def give(self, interaction: discord.Interaction, member: discord.Member, amount: int, currency: str = "both"):
+    @app_commands.describe(member="Usuario objetivo", amount="Cantidad (negativa para quitar)")
+    async def give(self, interaction: discord.Interaction, member: discord.Member, amount: int):
         guild_id = interaction.guild_id
 
         async with self.bot.db.acquire() as conn:
@@ -263,27 +257,13 @@ class AdminCog(commands.Cog):
             if not user:
                 await conn.execute("INSERT INTO users (user_id, guild_id, username) VALUES ($1, $2, $3) ON CONFLICT (user_id, guild_id) DO UPDATE SET username = EXCLUDED.username, updated_at = NOW();", member.id, guild_id, member.display_name)
 
-            if currency == "points":
-                await conn.execute("UPDATE users SET points = GREATEST(0, points + $3), updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", member.id, guild_id, amount)
-                points_delta, money_delta = amount, 0
+            await conn.execute("UPDATE users SET points = GREATEST(0, points + $3), updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", member.id, guild_id, amount)
 
-            elif currency == "money":
-                await conn.execute("UPDATE users SET money = GREATEST(0, money + $3), updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", member.id, guild_id, amount)
-                points_delta, money_delta = 0, amount
-
-            else:
-                await conn.execute("UPDATE users SET points = GREATEST(0, points + $3), money = GREATEST(0, money + $3), updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", member.id, guild_id, amount)
-                points_delta, money_delta = amount, amount
-
-            await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1, $2, 'admin', $3, $4, $5);", member.id, guild_id, points_delta, money_delta, f"Admin: {interaction.user.display_name}")
+            await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1, $2, 'admin', $3, 0, $4);", member.id, guild_id, amount, f"Admin: {interaction.user.display_name}")
 
         sign = "+" if amount >= 0 else ""
         action = "Dados" if amount >= 0 else "Quitados"
-        desc = f"**{member.display_name}**\n"
-        if points_delta != 0:
-            desc += f"Puntos: **{sign}{points_delta}**\n"
-        if money_delta != 0:
-            desc += f"Dinero: **{sign}{money_delta}**\n"
+        desc = f"**{member.display_name}**\nPuntos: **{sign}{amount}**\n"
 
         embed = discord.Embed(title=f"{action} por administrador", description=desc, color=discord.Color.green() if amount >= 0 else discord.Color.red())
         embed.set_footer(text=f"Por {interaction.user.display_name}")
@@ -291,7 +271,7 @@ class AdminCog(commands.Cog):
 
         logger = self.bot.get_cog("LoggerCog")
         if logger:
-            await logger.log_admin_give(guild_id=guild_id, admin=interaction.user, target=member, points=points_delta, money=money_delta)
+            await logger.log_admin_give(guild_id=guild_id, admin=interaction.user, target=member, points=amount, money=0)
 
     # ── /reset ─────────────────────────────────────────────────
     @app_commands.command(name="reset", description="[Admin] Resetear datos del servidor")
@@ -324,7 +304,7 @@ class AdminCog(commands.Cog):
                 await conn.execute("DELETE FROM transactions WHERE user_id = $1 AND guild_id = $2;", member.id, guild_id)
                 await conn.execute("DELETE FROM robberies WHERE (attacker_id = $1 OR victim_id = $1) AND guild_id = $2;", member.id, guild_id)
                 await conn.execute("DELETE FROM temp_roles WHERE user_id = $1 AND guild_id = $2;", member.id, guild_id)
-                await conn.execute("UPDATE users SET points = 0, money = 0, elo = 1000, daily_streak = 0, last_daily = NULL, gold_wins = 0, total_quizzes = 0, correct_answers = 0, robberies_today = 0, last_robbery = NULL, shield_until = NULL, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", member.id, guild_id)
+                await conn.execute("UPDATE users SET points = 0, daily_streak = 0, last_daily = NULL, gold_wins = 0, total_quizzes = 0, correct_answers = 0, robberies_today = 0, last_robbery = NULL, shield_until = NULL, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", member.id, guild_id)
 
             await interaction.followup.send(f"Datos de **{member.display_name}** reseteados.", ephemeral=True)
 
@@ -333,13 +313,13 @@ class AdminCog(commands.Cog):
 
         elif target == "ranking":
             view = ConfirmView(interaction.user.id)
-            await interaction.response.send_message("¿Resetear puntos, dinero y ELO de **TODOS** los usuarios?", view=view, ephemeral=True)
+            await interaction.response.send_message("¿Resetear puntos de **TODOS** los usuarios?", view=view, ephemeral=True)
             await view.wait()
             if not view.confirmed:
                 return
 
             async with self.bot.db.acquire() as conn:
-                await conn.execute("UPDATE users SET points = 0, money = 0, elo = 1000, daily_streak = 0, gold_wins = 0, updated_at = NOW() WHERE guild_id = $1;", guild_id)
+                await conn.execute("UPDATE users SET points = 0, daily_streak = 0, gold_wins = 0, updated_at = NOW() WHERE guild_id = $1;", guild_id)
 
             await interaction.followup.send("Ranking del servidor reseteado.", ephemeral=True)
 

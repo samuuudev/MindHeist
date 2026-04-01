@@ -235,9 +235,9 @@ class GoldCog(commands.Cog):
                 async with self.bot.db.acquire() as conn:
                     await conn.execute("INSERT INTO users (user_id, guild_id, username) VALUES ($1, $2, $3) ON CONFLICT (user_id, guild_id) DO UPDATE SET username = EXCLUDED.username, updated_at = NOW();", view.winner_id, guild_id, view.winner_name)
 
-                    await conn.execute("UPDATE users SET points = points + $3, money = money + $3, gold_wins = gold_wins + 1, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", view.winner_id, guild_id, total_reward)
+                    await conn.execute("UPDATE users SET points = points + $3, gold_wins = gold_wins + 1, updated_at = NOW() WHERE user_id = $1 AND guild_id = $2;", view.winner_id, guild_id, total_reward)
 
-                    await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,'gold',$3,$3,$4);", view.winner_id, guild_id, total_reward, f"Pregunta de Oro #{event_id}")
+                    await conn.execute("INSERT INTO transactions (user_id, guild_id, tx_type, points_delta, money_delta, description) VALUES ($1,$2,'gold',$3,0,$4);", view.winner_id, guild_id, total_reward, f"Pregunta de Oro #{event_id}")
 
                     await conn.execute("INSERT INTO answer_history (user_id, guild_id, question_id, answered_index, is_correct, points_earned, context, response_time) VALUES ($1,$2,$3,$4,TRUE,$5,'gold',$6);", view.winner_id, guild_id, question_id, question_data["correct_index"], total_reward, view.response_time)
 

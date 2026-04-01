@@ -1,55 +1,95 @@
-﻿import discord
-from discord.ext import commands
-import datetime
+﻿"""
+Cog Updates — Sistema de novedades del bot.
+Lee updates.txt al iniciar y las envía a los canales de logs configurados.
+"""
+
 import os
-import asyncio
+import datetime
+import logging
+
+import discord
+from discord.ext import commands
+
+log = logging.getLogger("bot.updates")
+
+UPDATE_FILE = "updates.txt"
+
 
 class UpdatesCog(commands.Cog):
-    """Cog que envía actualizaciones desde un archivo al iniciar el bot."""
+    """Envía actualizaciones pendientes a los canales de logs al iniciar el bot."""
 
-    def __init__(self, bot: commands.Bot, update_file="updates.txt"):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.update_file = update_file
-        self.update_channel_id = None  # Cambiar luego con set_update_channel
-        # Ejecutar check al iniciar
-        self.bot.loop.create_task(self.check_updates_on_startup())
+        self.bot.loop.create_task(self._send_pending_updates())
 
-    async def check_updates_on_startup(self):
-        await self.bot.wait_until_ready()  # espera que el bot esté listo
+    # ── Al iniciar: leer updates.txt y enviar a todos los servidores ──
 
-        if not self.update_channel_id or not os.path.exists(self.update_file):
+    async def _send_pending_updates(self):
+        await self.bot.wait_until_ready()
+
+        if not os.path.exists(UPDATE_FILE):
             return
 
-        # Leer mensajes
-        async with asyncio.Lock():
-            with open(self.update_file, "r", encoding="utf-8") as f:
-                lines = f.readlines()
+        with open(UPDATE_FILE, "r", encoding="utf-8") as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
 
-            if not lines:
-                return
+        if not lines:
+            return
 
-            channel = self.bot.get_channel(self.update_channel_id)
+        content = "\n".join(f"• {line}" for line in lines)
+
+        embed = discord.Embed(
+            title="📢 Novedades del bot",
+            description=content,
+            color=discord.Color.blue(),
+            timestamp=datetime.datetime.utcnow(),
+        )
+        embed.set_footer(text="Actualización automática al iniciar")
+
+        sent_count = 0
+        for guild in self.bot.guilds:
+            channel = await self._get_log_channel(guild.id)
             if not channel:
-                print("No se encontró el canal de actualizaciones.")
-                return
+                log.info(f"  Sin canal de logs en {guild.name}, saltando update.")
+                continue
+            try:
+                await channel.send(embed=embed)
+                sent_count += 1
+                log.info(f"  Update enviada a {guild.name} (#{channel.name})")
+            except discord.Forbidden:
+                log.warning(f"  Sin permisos para enviar en #{channel.name} ({guild.name})")
+            except Exception as e:
+                log.warning(f"  Error enviando update a {guild.name}: {e}")
 
-            for message in lines:
-                message = message.strip()
-                if message:
-                    embed = discord.Embed(title="📢 Nueva actualización", description=message, color=discord.Color.blue(), timestamp=datetime.datetime.utcnow())
-                    embed.set_footer(text="Enviado desde VPS al iniciar el bot")
-                    await channel.send(embed=embed)
-                    print(f"Actualización enviada: {message}")
+        # Limpiar el archivo solo si se envió al menos a un servidor
+        if sent_count > 0:
+            open(UPDATE_FILE, "w").close()
+            log.info(f"Updates enviadas a {sent_count} servidor(es). Archivo limpiado.")
+        else:
+            log.warning("No se envió a ningún servidor. El archivo NO se limpia.")
 
-            # Borrar contenido del archivo
-            open(self.update_file, "w").close()
-            print("Archivo de actualizaciones limpiado.")
 
-    @commands.command(name="set_update_channel")
-    async def set_update_channel_cmd(self, ctx, channel: discord.TextChannel):
-        """Comando para definir el canal de actualizaciones"""
-        self.update_channel_id = channel.id
-        await ctx.send(f"Canal de actualizaciones configurado: {channel.mention}")
+    # ── Helper: obtener canal de logs de un servidor ──
+
+    async def _get_log_channel(self, guild_id: int) -> discord.TextChannel | None:
+        try:
+            async with self.bot.db.acquire() as conn:
+                channel_id = await conn.fetchval(
+                    "SELECT log_channel_id FROM guild_config WHERE guild_id = $1",
+                    guild_id,
+                )
+        except Exception:
+            return None
+
+        if not channel_id:
+            return None
+
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            return None
+
+        return guild.get_channel(channel_id)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(UpdatesCog(bot))
