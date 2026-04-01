@@ -1,0 +1,27 @@
+Actualización — 02/04/2026
+
+Robos (/robar)
+- Eliminado el límite diario de robos. Ahora puedes robar tantas veces como quieras, respetando el cooldown entre intentos.
+- Se muestra la respuesta correcta cuando fallas un robo.
+- Corregido un bug donde el contador de robos se incrementaba antes de completar el intento.
+
+Economía simplificada
+- Todo el sistema funciona ahora exclusivamente con puntos del ranking global.
+- Eliminado el sistema de dinero (money) y el sistema de ELO.
+- Los escudos (/escudo) se compran con puntos.
+- Las recompensas de /quiz, /daily y Pregunta de Oro otorgan únicamente puntos.
+
+Ranking y estadísticas
+- Eliminadas las categorías de Dinero y ELO del /top.
+- Perfil y estadísticas actualizados para reflejar solo puntos.
+- Corregido un error en las estadísticas de robos.
+
+Administración
+- /give simplificado: solo gestiona puntos.
+- /set actualizado: eliminada la opción de límite diario de robos.
+- Textos de configuración corregidos.
+
+General
+- Los comandos se sincronizan de forma instantánea en cada servidor.
+
+
