@@ -454,7 +454,7 @@ class QuizCog(commands.Cog):
                     """
                     SELECT content
                     FROM questions
-                    WHERE category = $1
+                    WHERE category = $1::question_category
                       AND difficulty = $2::question_difficulty
                     ORDER BY created_at DESC
                     LIMIT $3;

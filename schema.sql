@@ -37,7 +37,7 @@ CREATE TYPE question_source AS ENUM ('openai', 'opentdb', 'manual');
 CREATE TYPE question_difficulty AS ENUM ('easy', 'medium', 'hard');
 CREATE TYPE question_category AS ENUM (
     'general', 'science', 'history', 'geography',
-    'entertainment', 'sports', 'logic', 'riddle', 'server', 'videogames', 'literature', 'art'
+    'entertainment', 'sports', 'logic', 'videogames', 'literature', 'art', 'music'
 );
 
 CREATE TABLE questions (
@@ -226,3 +226,14 @@ BEGIN
     WHERE robberies_today > 0;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- 11. MIGRACIONES — Añadir valores nuevos a ENUMs existentes
+-- ============================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'music' AND enumtypid = 'question_category'::regtype) THEN
+        ALTER TYPE question_category ADD VALUE 'music';
+    END IF;
+END
+$$;

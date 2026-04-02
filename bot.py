@@ -188,4 +188,5 @@ def main():
 
 if __name__ == "__main__":
     print("Iniciando bot...")
+    print("MindHeist online")
     main()
