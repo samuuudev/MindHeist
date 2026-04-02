@@ -1,27 +1,13 @@
-Actualización — 02/04/2026
+Actualización v1.2 — 2 de abril de 2026
 
-Robos (/robar)
-- Eliminado el límite diario de robos. Ahora puedes robar tantas veces como quieras, respetando el cooldown entre intentos.
-- Se muestra la respuesta correcta cuando fallas un robo.
-- Corregido un bug donde el contador de robos se incrementaba antes de completar el intento.
-
-Economía simplificada
-- Todo el sistema funciona ahora exclusivamente con puntos del ranking global.
-- Eliminado el sistema de dinero (money) y el sistema de ELO.
-- Los escudos (/escudo) se compran con puntos.
-- Las recompensas de /quiz, /daily y Pregunta de Oro otorgan únicamente puntos.
-
-Ranking y estadísticas
-- Eliminadas las categorías de Dinero y ELO del /top.
-- Perfil y estadísticas actualizados para reflejar solo puntos.
-- Corregido un error en las estadísticas de robos.
-
-Administración
-- /give simplificado: solo gestiona puntos.
-- /set actualizado: eliminada la opción de límite diario de robos.
-- Textos de configuración corregidos.
-
-General
-- Los comandos se sincronizan de forma instantánea en cada servidor.
-
-
+[Quiz] Recompensas por dificultad: las preguntas fáciles, medias y difíciles ahora otorgan puntos distintos (por defecto: 3, 5 y 8 pts respectivamente). Configurable con /set.
+[Quiz] Tiempo por dificultad: fácil 60s, media 45s, difícil 30s. Cada nivel tiene su propio temporizador, también configurable con /set.
+[Admin] Nuevos parámetros en /set: Puntos Quiz Fácil, Media, Difícil y Tiempo Quiz Fácil, Media, Difícil.
+[Admin] /config ahora muestra un desglose completo de puntos y tiempos por dificultad.
+[Robo] Eliminado el sistema de ELO del cog de robos. Los robos ahora solo afectan a puntos globales del ranking.
+[Robo] Eliminado el límite diario de robos. Ya no existe restricción por número de intentos al día.
+[Robo] La compra de escudos ahora consume puntos globales (los mismos del ranking), no moneda separada.
+[Robo] Las notificaciones de robo se envían únicamente por el canal donde se ejecutó el comando o por mensaje privado. Ya no se notifica en todos los servidores.
+[Base de datos] El schema.sql es ahora completamente idempotente: todas las tablas, índices y enums usan IF NOT EXISTS. Se pueden ejecutar múltiples veces sin errores.
+[Base de datos] Añadida migración automática para las nuevas columnas de configuración por dificultad.
+[Updates] Eliminado el comando /update. Las novedades se publican automáticamente al reiniciar el bot.

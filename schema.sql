@@ -195,6 +195,12 @@ CREATE TABLE IF NOT EXISTS guild_config (
     log_channel_id          BIGINT,
     daily_points            INTEGER DEFAULT 10,
     quiz_points             INTEGER DEFAULT 5,
+    quiz_points_easy        INTEGER DEFAULT 3,
+    quiz_points_medium      INTEGER DEFAULT 5,
+    quiz_points_hard        INTEGER DEFAULT 8,
+    quiz_time_easy          INTEGER DEFAULT 60,
+    quiz_time_medium        INTEGER DEFAULT 45,
+    quiz_time_hard          INTEGER DEFAULT 30,
     gold_min_points         INTEGER DEFAULT 25,
     gold_max_points         INTEGER DEFAULT 40,
     robbery_min_pct         REAL DEFAULT 0.10,
@@ -266,3 +272,30 @@ BEGIN
     END IF;
 END
 $$;
+
+-- ============================================================
+-- 12. MIGRACIONES — Columnas de puntos y tiempos por dificultad
+-- ============================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'guild_config' AND column_name = 'quiz_points_easy') THEN
+        ALTER TABLE guild_config ADD COLUMN quiz_points_easy INTEGER DEFAULT 3;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'guild_config' AND column_name = 'quiz_points_medium') THEN
+        ALTER TABLE guild_config ADD COLUMN quiz_points_medium INTEGER DEFAULT 5;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'guild_config' AND column_name = 'quiz_points_hard') THEN
+        ALTER TABLE guild_config ADD COLUMN quiz_points_hard INTEGER DEFAULT 8;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'guild_config' AND column_name = 'quiz_time_easy') THEN
+        ALTER TABLE guild_config ADD COLUMN quiz_time_easy INTEGER DEFAULT 60;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'guild_config' AND column_name = 'quiz_time_medium') THEN
+        ALTER TABLE guild_config ADD COLUMN quiz_time_medium INTEGER DEFAULT 45;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'guild_config' AND column_name = 'quiz_time_hard') THEN
+        ALTER TABLE guild_config ADD COLUMN quiz_time_hard INTEGER DEFAULT 30;
+    END IF;
+END
+$$;
+

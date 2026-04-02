@@ -299,6 +299,13 @@ class QuizCog(commands.Cog):
         "hard": 8,
     }
 
+    # Tiempo base por dificultad en segundos (valores por defecto)
+    DIFFICULTY_BASE_TIME = {
+        "easy": 60,
+        "medium": 45,
+        "hard": 30,
+    }
+
     # ── /quiz ──────────────────────────────────────────────────
 
     @app_commands.command(
@@ -360,20 +367,25 @@ class QuizCog(commands.Cog):
         question_id = await self._save_question(question_data)
         await self._ensure_user(user_id, guild_id, interaction.user.display_name)
 
-        # Determinar puntos según dificultad (prioridad: quiz_points_<difficulty> -> quiz_points -> default map)
+        # Determinar puntos según dificultad (prioridad: columna específica -> default map)
         default_points = self.DIFFICULTY_BASE_POINTS
+        default_time = self.DIFFICULTY_BASE_TIME
         if config:
-            points = config.get(
-                f"quiz_points_{difficulty}",
-                config.get("quiz_points", default_points.get(difficulty, 5)),
-            )
+            points = config.get(f"quiz_points_{difficulty}", default_points.get(difficulty, 5))
+            timeout_seconds = config.get(f"quiz_time_{difficulty}", default_time.get(difficulty, 30))
         else:
             points = default_points.get(difficulty, 5)
+            timeout_seconds = default_time.get(difficulty, 30)
 
         try:
             points = int(points)
         except Exception:
             points = default_points.get(difficulty, 5)
+
+        try:
+            timeout_seconds = int(timeout_seconds)
+        except Exception:
+            timeout_seconds = default_time.get(difficulty, 30)
 
         diff = DIFFICULTY_DISPLAY.get(difficulty, DIFFICULTY_DISPLAY["medium"])
 
@@ -389,10 +401,10 @@ class QuizCog(commands.Cog):
         embed.add_field(name="Opciones", value="\n".join(options_lines), inline=False)
         embed.add_field(name="Dificultad", value=f"{diff['emoji']} {diff['name']}", inline=True)
         embed.add_field(name="Recompensa", value=f"{points} puntos", inline=True)
-        embed.add_field(name="Tiempo", value="30 segundos", inline=True)
+        embed.add_field(name="Tiempo", value=f"{timeout_seconds} segundos", inline=True)
         embed.set_footer(text=f"Pregunta para {interaction.user.display_name} · Fuente: {question_data.get('source', 'desconocida')}")
 
-        view = QuizView(question_data, user_id, timeout_seconds=30)
+        view = QuizView(question_data, user_id, timeout_seconds=timeout_seconds)
         await interaction.followup.send(embed=embed, view=view)
         self._cooldowns[user_id] = datetime.utcnow()
 
@@ -402,11 +414,11 @@ class QuizCog(commands.Cog):
             correct_answer = question_data["options"][question_data["correct_index"]]
             timeout_embed = discord.Embed(title="Tiempo agotado", description=f"La respuesta correcta era: **{correct_answer}**", color=discord.Color.orange())
             await interaction.followup.send(embed=timeout_embed)
-            await self._save_answer(user_id, guild_id, question_id, answered_index=-1, is_correct=False, points_earned=0, context="quiz", response_time=30.0)
+            await self._save_answer(user_id, guild_id, question_id, answered_index=-1, is_correct=False, points_earned=0, context="quiz", response_time=float(timeout_seconds))
 
             logger = self.bot.get_cog("LoggerCog")
             if logger:
-                await logger.log_quiz(guild_id=guild_id, user=interaction.user, correct=False, points=0, difficulty=difficulty, category=category_used, response_time=30.0)
+                await logger.log_quiz(guild_id=guild_id, user=interaction.user, correct=False, points=0, difficulty=difficulty, category=category_used, response_time=float(timeout_seconds))
             return
 
         final_points = 0

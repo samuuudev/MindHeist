@@ -57,6 +57,12 @@ class ConfirmView(discord.ui.View):
 PARAM_RULES = {
     "daily_points":        {"type": int, "min": 0,  "max": 10000, "unit": "pts"},
     "quiz_points":         {"type": int, "min": 0,  "max": 10000, "unit": "pts"},
+    "quiz_points_easy":    {"type": int, "min": 0,  "max": 10000, "unit": "pts"},
+    "quiz_points_medium":  {"type": int, "min": 0,  "max": 10000, "unit": "pts"},
+    "quiz_points_hard":    {"type": int, "min": 0,  "max": 10000, "unit": "pts"},
+    "quiz_time_easy":      {"type": int, "min": 10, "max": 300,   "unit": "seg"},
+    "quiz_time_medium":    {"type": int, "min": 10, "max": 300,   "unit": "seg"},
+    "quiz_time_hard":      {"type": int, "min": 10, "max": 300,   "unit": "seg"},
     "gold_min_points":     {"type": int, "min": 0,  "max": 10000, "unit": "pts"},
     "gold_max_points":     {"type": int, "min": 0,  "max": 10000, "unit": "pts"},
     "quiz_cooldown_min":   {"type": int, "min": 1,  "max": 1440,  "unit": "min"},
@@ -200,6 +206,7 @@ class AdminCog(commands.Cog):
         embed = discord.Embed(title=f"Configuración — {guild.name}", color=discord.Color.blurple())
         embed.add_field(name="Canales", value=(f"Quiz: {ch_mention(cfg['quiz_channel_id'])}\nOro: {ch_mention(cfg['gold_channel_id'])}\nLogs: {ch_mention(cfg['log_channel_id'])}"), inline=False)
         embed.add_field(name="Puntos", value=(f"Daily: **{cfg['daily_points']}** pts\nQuiz: **{cfg['quiz_points']}** pts\nOro: **{cfg['gold_min_points']}-{cfg['gold_max_points']}** pts"), inline=True)
+        embed.add_field(name="Quiz por dificultad", value=(f"🟢 Fácil: **{cfg.get('quiz_points_easy', 3)}** pts / **{cfg.get('quiz_time_easy', 60)}s**\n🟡 Media: **{cfg.get('quiz_points_medium', 5)}** pts / **{cfg.get('quiz_time_medium', 45)}s**\n🔴 Difícil: **{cfg.get('quiz_points_hard', 8)}** pts / **{cfg.get('quiz_time_hard', 30)}s**"), inline=True)
         embed.add_field(name="Cooldowns", value=(f"Daily: **{cfg['daily_cooldown_hours']}h**\nQuiz: **{cfg['quiz_cooldown_min']}** min\nRobo: **{cfg['robbery_cooldown_min']}** min"), inline=True)
         embed.add_field(name="Robos", value=(f"Éxito: **{int(cfg['robbery_min_pct'] * 100)}-{int(cfg['robbery_max_pct'] * 100)}%** de los puntos\nFallo: **-{int(cfg['robbery_fail_pct'] * 100)}%** propio\nPuntos mín víctima: **{cfg['min_money_to_rob']}**"), inline=True)
 
@@ -216,7 +223,13 @@ class AdminCog(commands.Cog):
     @app_commands.describe(parameter="Parámetro a modificar", value="Nuevo valor")
     @app_commands.choices(parameter=[
         app_commands.Choice(name="Puntos Daily", value="daily_points"),
-        app_commands.Choice(name="Puntos Quiz", value="quiz_points"),
+        app_commands.Choice(name="Puntos Quiz (general)", value="quiz_points"),
+        app_commands.Choice(name="Puntos Quiz Fácil", value="quiz_points_easy"),
+        app_commands.Choice(name="Puntos Quiz Media", value="quiz_points_medium"),
+        app_commands.Choice(name="Puntos Quiz Difícil", value="quiz_points_hard"),
+        app_commands.Choice(name="Tiempo Quiz Fácil (seg)", value="quiz_time_easy"),
+        app_commands.Choice(name="Tiempo Quiz Media (seg)", value="quiz_time_medium"),
+        app_commands.Choice(name="Tiempo Quiz Difícil (seg)", value="quiz_time_hard"),
         app_commands.Choice(name="Oro mínimo", value="gold_min_points"),
         app_commands.Choice(name="Oro máximo", value="gold_max_points"),
         app_commands.Choice(name="Cooldown Quiz (min)", value="quiz_cooldown_min"),
