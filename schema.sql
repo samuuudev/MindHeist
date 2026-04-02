@@ -247,9 +247,20 @@ $$ LANGUAGE plpgsql;
 
 -- ============================================================
 -- 11. MIGRACIONES — Añadir valores nuevos a ENUMs existentes
+--    (para DBs creadas con versiones anteriores del schema)
 -- ============================================================
 DO $$
 BEGIN
+    -- question_category: asegurar que todos los valores existen
+    IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'videogames' AND enumtypid = 'question_category'::regtype) THEN
+        ALTER TYPE question_category ADD VALUE 'videogames';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'literature' AND enumtypid = 'question_category'::regtype) THEN
+        ALTER TYPE question_category ADD VALUE 'literature';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'art' AND enumtypid = 'question_category'::regtype) THEN
+        ALTER TYPE question_category ADD VALUE 'art';
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'music' AND enumtypid = 'question_category'::regtype) THEN
         ALTER TYPE question_category ADD VALUE 'music';
     END IF;
