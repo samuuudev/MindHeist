@@ -1,16 +1,46 @@
 -- ============================================================
 -- DISCORD COMPETITIVE BOT — DATABASE SCHEMA (multi-guild)
 -- Compatible con PostgreSQL (Pterodactyl container DB)
+-- Seguro para ejecutar múltiples veces (idempotente)
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
+-- ENUMs (se crean solo si no existen)
+-- ============================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'question_source') THEN
+        CREATE TYPE question_source AS ENUM ('openai', 'opentdb', 'manual');
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'question_difficulty') THEN
+        CREATE TYPE question_difficulty AS ENUM ('easy', 'medium', 'hard');
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'question_category') THEN
+        CREATE TYPE question_category AS ENUM (
+            'general', 'science', 'history', 'geography',
+            'entertainment', 'sports', 'logic', 'videogames', 'literature', 'art', 'music'
+        );
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'event_type') THEN
+        CREATE TYPE event_type AS ENUM (
+            'double_points', 'free_robbery', 'triple_gold',
+            'speed_quiz', 'mystery_box'
+        );
+    END IF;
+END
+$$;
+
+-- ============================================================
 -- 1. USUARIOS
 -- ============================================================
-CREATE TABLE users (
-    user_id         BIGINT NOT NULL,          -- Discord user ID
-    guild_id        BIGINT NOT NULL,          -- Discord guild ID
+CREATE TABLE IF NOT EXISTS users (
+    user_id         BIGINT NOT NULL,
+    guild_id        BIGINT NOT NULL,
     username        VARCHAR(64) NOT NULL,
     points          INTEGER NOT NULL DEFAULT 0,
     money           INTEGER NOT NULL DEFAULT 0,
@@ -27,20 +57,13 @@ CREATE TABLE users (
     PRIMARY KEY(user_id, guild_id)
 );
 
-CREATE INDEX idx_users_points ON users (guild_id, points DESC);
-CREATE INDEX idx_users_gold_wins ON users (guild_id, gold_wins DESC);
+CREATE INDEX IF NOT EXISTS idx_users_points ON users (guild_id, points DESC);
+CREATE INDEX IF NOT EXISTS idx_users_gold_wins ON users (guild_id, gold_wins DESC);
 
 -- ============================================================
 -- 2. PREGUNTAS
 -- ============================================================
-CREATE TYPE question_source AS ENUM ('openai', 'opentdb', 'manual');
-CREATE TYPE question_difficulty AS ENUM ('easy', 'medium', 'hard');
-CREATE TYPE question_category AS ENUM (
-    'general', 'science', 'history', 'geography',
-    'entertainment', 'sports', 'logic', 'videogames', 'literature', 'art', 'music'
-);
-
-CREATE TABLE questions (
+CREATE TABLE IF NOT EXISTS questions (
     question_id     SERIAL PRIMARY KEY,
     content         TEXT NOT NULL,
     options         JSONB NOT NULL,
@@ -53,13 +76,13 @@ CREATE TABLE questions (
     created_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_questions_difficulty ON questions (difficulty);
-CREATE INDEX idx_questions_category ON questions (category);
+CREATE INDEX IF NOT EXISTS idx_questions_difficulty ON questions (difficulty);
+CREATE INDEX IF NOT EXISTS idx_questions_category ON questions (category);
 
 -- ============================================================
 -- 3. HISTORIAL DE RESPUESTAS
 -- ============================================================
-CREATE TABLE answer_history (
+CREATE TABLE IF NOT EXISTS answer_history (
     answer_id       SERIAL PRIMARY KEY,
     user_id         BIGINT NOT NULL,
     guild_id        BIGINT NOT NULL,
@@ -76,13 +99,13 @@ CREATE TABLE answer_history (
         ON DELETE CASCADE
 );
 
-CREATE INDEX idx_answers_user ON answer_history (user_id, guild_id, answered_at DESC);
-CREATE INDEX idx_answers_context ON answer_history (context, answered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_answers_user ON answer_history (user_id, guild_id, answered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_answers_context ON answer_history (context, answered_at DESC);
 
 -- ============================================================
 -- 4. GOLD EVENTS
 -- ============================================================
-CREATE TABLE gold_events (
+CREATE TABLE IF NOT EXISTS gold_events (
     event_id        SERIAL PRIMARY KEY,
     guild_id        BIGINT NOT NULL,
     question_id     INTEGER REFERENCES questions(question_id),
@@ -98,12 +121,12 @@ CREATE TABLE gold_events (
         ON DELETE SET NULL
 );
 
-CREATE INDEX idx_gold_active ON gold_events (guild_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_gold_active ON gold_events (guild_id, is_active);
 
 -- ============================================================
 -- 5. ROBOS PvP
 -- ============================================================
-CREATE TABLE robberies (
+CREATE TABLE IF NOT EXISTS robberies (
     robbery_id      SERIAL PRIMARY KEY,
     attacker_id     BIGINT NOT NULL,
     victim_id       BIGINT NOT NULL,
@@ -121,13 +144,13 @@ CREATE TABLE robberies (
         ON DELETE CASCADE
 );
 
-CREATE INDEX idx_robberies_attacker ON robberies (attacker_id, guild_id, created_at DESC);
-CREATE INDEX idx_robberies_victim ON robberies (victim_id, guild_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_robberies_attacker ON robberies (attacker_id, guild_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_robberies_victim ON robberies (victim_id, guild_id, created_at DESC);
 
 -- ============================================================
 -- 6. ROLES TEMPORALES
 -- ============================================================
-CREATE TABLE temp_roles (
+CREATE TABLE IF NOT EXISTS temp_roles (
     temp_role_id    SERIAL PRIMARY KEY,
     user_id         BIGINT NOT NULL,
     guild_id        BIGINT NOT NULL,
@@ -142,18 +165,13 @@ CREATE TABLE temp_roles (
         ON DELETE CASCADE
 );
 
-CREATE INDEX idx_temp_roles_active ON temp_roles (guild_id, removed, expires_at);
-CREATE INDEX idx_temp_roles_user ON temp_roles (user_id, guild_id, removed);
+CREATE INDEX IF NOT EXISTS idx_temp_roles_active ON temp_roles (guild_id, removed, expires_at);
+CREATE INDEX IF NOT EXISTS idx_temp_roles_user ON temp_roles (user_id, guild_id, removed);
 
 -- ============================================================
 -- 7. EVENTOS ESPECIALES
 -- ============================================================
-CREATE TYPE event_type AS ENUM (
-    'double_points', 'free_robbery', 'triple_gold',
-    'speed_quiz', 'mystery_box'
-);
-
-CREATE TABLE special_events (
+CREATE TABLE IF NOT EXISTS special_events (
     event_id        SERIAL PRIMARY KEY,
     guild_id        BIGINT NOT NULL,
     event_type      event_type NOT NULL,
@@ -165,12 +183,12 @@ CREATE TABLE special_events (
     created_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_events_active ON special_events (guild_id, starts_at, ends_at);
+CREATE INDEX IF NOT EXISTS idx_events_active ON special_events (guild_id, starts_at, ends_at);
 
 -- ============================================================
 -- 8. CONFIGURACIÓN POR SERVIDOR
 -- ============================================================
-CREATE TABLE guild_config (
+CREATE TABLE IF NOT EXISTS guild_config (
     guild_id                BIGINT PRIMARY KEY,
     quiz_channel_id         BIGINT,
     gold_channel_id         BIGINT,
@@ -199,7 +217,7 @@ CREATE TABLE guild_config (
 -- ============================================================
 -- 9. TRANSACCIONES
 -- ============================================================
-CREATE TABLE transactions (
+CREATE TABLE IF NOT EXISTS transactions (
     tx_id           SERIAL PRIMARY KEY,
     user_id         BIGINT NOT NULL,
     guild_id        BIGINT NOT NULL,
@@ -213,8 +231,8 @@ CREATE TABLE transactions (
         ON DELETE CASCADE
 );
 
-CREATE INDEX idx_tx_user ON transactions (user_id, guild_id, created_at DESC);
-CREATE INDEX idx_tx_type ON transactions (tx_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions (user_id, guild_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_type ON transactions (tx_type, created_at DESC);
 
 -- ============================================================
 -- 10. DAILY RESET HELPER
